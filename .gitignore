@@ -1,0 +1,10 @@
+# Installers — unrelated to the app, not meant to be published
+*.exe
+
+# Personal data exports — real club/venue/fixture data, not for the public repo
+matchday-log-backup-*.json
+
+# Superseded local snapshots — matchday-log (2).html was renamed to index.html,
+# which git now versions going forward. Kept on disk for reference, not published.
+matchday-log.html
+matchday-log (1).html

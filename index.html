@@ -1,0 +1,1993 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>MATCHDAY LOG</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap');
+
+  :root{
+    --bg: #16161a;
+    --panel: #1e1e23;
+    --panel-raised: #24242a;
+    --line: #35353c;
+    --text: #f2f2f4;
+    --muted: #9a9aa2;
+    --muted-dim: #5c5c64;
+    --signal: #34d399;
+    --amber: #f5a524;
+    --red: #f2495c;
+    --blue: #4ea1f5;
+    --brand: #ff2e63;
+    --brand-tint: rgba(255,46,99,0.10);
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    padding-bottom: 40px;
+  }
+  ::selection{ background: var(--brand); color: #fff; }
+
+  header{
+    border-bottom: 3px solid var(--brand);
+    padding: 18px 20px 14px;
+    position: sticky; top:0;
+    background: rgba(22,22,26,0.92);
+    backdrop-filter: blur(8px);
+    z-index: 40;
+  }
+  .brand{
+    display:flex; align-items:baseline; justify-content:space-between; gap:12px;
+    flex-wrap: wrap;
+  }
+  .brand h1{
+    font-family:'Oswald', sans-serif;
+    font-weight:700;
+    font-size: 22px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    display:flex; align-items:center; gap:9px;
+  }
+  .brand h1 .dot{
+    width:9px; height:9px; border-radius:50%;
+    background: var(--brand);
+    box-shadow: 0 0 8px rgba(255,46,99,0.5);
+    flex-shrink:0;
+  }
+  .brand .clock{
+    font-family:'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 0.03em;
+  }
+  .ticker{
+    margin-top: 12px;
+    display:flex; gap: 18px; flex-wrap: wrap;
+    font-family:'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+  }
+  .ticker .stat{ color: var(--muted); }
+  .ticker .stat b{ color: var(--text); font-weight:600; }
+  .ticker .stat.open b{ color: var(--red); }
+  .ticker .stat.resolved b{ color: var(--signal); }
+
+  main{
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 20px 16px 0;
+  }
+
+  .tabs{
+    display:flex; gap:2px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 3px;
+    margin-bottom: 18px;
+  }
+  .tab{
+    flex:1;
+    text-align:center;
+    padding: 10px 8px;
+    font-family:'Oswald', sans-serif;
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-radius: 7px;
+    cursor:pointer;
+    user-select:none;
+    transition: background 0.15s, color 0.15s;
+  }
+  .tab.active{ background: var(--panel-raised); color: var(--text); }
+  .tab:active{ transform: scale(0.98); }
+
+  .card{
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  .card h2{
+    font-family:'Oswald', sans-serif;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+    padding-left: 9px;
+    border-left: 3px solid var(--brand);
+    display:flex; align-items:center; justify-content:space-between;
+  }
+
+  /* Fixture chips */
+  .fixture-row{ display:flex; gap:8px; overflow-x:auto; padding-bottom:4px; margin-bottom: 4px; }
+  .fixture-chip{
+    flex-shrink:0;
+    padding: 9px 14px;
+    border-radius: 9px;
+    border: 1px solid var(--line);
+    background: var(--panel-raised);
+    font-family:'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    cursor:pointer;
+    white-space:nowrap;
+    display:flex; align-items:center; gap:6px;
+  }
+  .fixture-chip.selected{
+    border-color: var(--brand);
+    color: var(--text);
+    background: var(--brand-tint);
+  }
+  .fixture-chip .badge{
+    background: var(--red); color:#fff;
+    font-size:10px; font-weight:700; border-radius:20px;
+    padding: 1px 6px; line-height:1.4;
+  }
+  .fixture-chip.selected .badge{ background: var(--brand); color:#fff; }
+  .fixture-chip .add-icon{ color: var(--brand); font-weight:700; }
+
+  input, textarea, select{
+    width:100%;
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 10px 12px;
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    outline: none;
+  }
+  input:focus, textarea:focus{ border-color: var(--brand); }
+  textarea{ resize: vertical; min-height: 64px; }
+  .field-label{
+    font-size: 11px; color: var(--muted-dim); text-transform:uppercase;
+    letter-spacing: 0.05em; margin-bottom: 6px; display:block;
+  }
+  .row2{ display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
+  .stack > * + *{ margin-top: 10px; }
+
+  /* Category buttons */
+  .cat-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
+  .cat-btn{
+    padding: 14px 10px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--panel-raised);
+    color: var(--text);
+    font-family:'Oswald', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; gap:4px;
+    text-align:center;
+    transition: transform 0.1s, border-color .15s;
+  }
+  .cat-btn:active{ transform: scale(0.96); }
+  .cat-btn .icon{ font-size:18px; }
+  .cat-btn.selected{ border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand) inset; background: var(--brand-tint); }
+
+  .sev-row{ display:flex; gap:8px; }
+  .sev-btn{
+    flex:1; padding: 9px 6px; text-align:center;
+    border-radius: 8px; border: 1px solid var(--line);
+    background: var(--panel-raised); color: var(--muted);
+    font-family:'JetBrains Mono', monospace; font-size:11.5px; font-weight:600;
+    letter-spacing: 0.04em; text-transform:uppercase; cursor:pointer;
+  }
+  .sev-btn.selected[data-sev="minor"]{ border-color: var(--blue); color: var(--blue); }
+  .sev-btn.selected[data-sev="moderate"]{ border-color: var(--amber); color: var(--amber); }
+  .sev-btn.selected[data-sev="major"]{ border-color: var(--red); color: var(--red); }
+  .sev-btn.selected[data-type]{ border-color: var(--brand); color: var(--brand); }
+
+  .submit-btn{
+    width:100%;
+    padding: 13px;
+    border-radius: 9px;
+    border: none;
+    background: var(--brand);
+    color: #fff;
+    font-family:'Oswald', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    cursor:pointer;
+    margin-top: 12px;
+  }
+  .submit-btn:active{ transform: scale(0.98); }
+  .submit-btn:disabled{ background: var(--muted-dim); color: #fff; cursor:not-allowed; }
+
+  .ghost-btn{
+    background: transparent; border: 1px dashed var(--line); color: var(--muted);
+    border-radius: 9px; padding: 10px; font-family:'Inter'; font-size: 13px; cursor:pointer;
+    width:100%;
+  }
+
+  /* Log entries */
+  .filters{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom: 12px; }
+  .filter-chip{
+    padding: 6px 11px; border-radius: 20px; border: 1px solid var(--line);
+    font-family:'JetBrains Mono', monospace; font-size: 11px; color: var(--muted);
+    cursor:pointer; background: var(--panel-raised);
+  }
+  .filter-chip.active{ background: var(--text); color: var(--bg); border-color: var(--text); }
+
+  .entry{
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--muted-dim);
+    border-radius: 8px;
+    padding: 12px 13px;
+    margin-bottom: 9px;
+    background: var(--panel-raised);
+  }
+  .entry.sev-minor{ border-left-color: var(--blue); }
+  .entry.sev-moderate{ border-left-color: var(--amber); }
+  .entry.sev-major{ border-left-color: var(--red); }
+  .entry.resolved{ opacity: 0.55; }
+  .entry-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:6px; }
+  .entry-meta{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .entry-cat{
+    font-family:'Oswald', sans-serif; font-size: 11px; font-weight:600;
+    text-transform:uppercase; letter-spacing:0.04em; color: var(--muted);
+  }
+  .entry-time{ font-family:'JetBrains Mono', monospace; font-size: 10.5px; color: var(--muted-dim); }
+  .entry-fixture{ font-family:'JetBrains Mono', monospace; font-size: 10.5px; color: var(--muted); }
+  .entry-note{ font-size: 13.5px; line-height:1.45; color: var(--text); white-space: pre-wrap; }
+  .entry-note.resolved-text{ text-decoration: line-through; text-decoration-color: var(--muted-dim); }
+  .resolve-btn{
+    flex-shrink:0;
+    font-family:'JetBrains Mono', monospace; font-size: 10px; font-weight:600;
+    padding: 5px 9px; border-radius: 6px; border: 1px solid var(--line);
+    background: transparent; color: var(--muted); cursor:pointer; text-transform:uppercase;
+  }
+  .resolve-btn.done{ border-color: var(--signal); color: var(--signal); }
+
+  .empty{
+    text-align:center; padding: 32px 16px; color: var(--muted-dim);
+    font-family:'JetBrains Mono', monospace; font-size: 12.5px;
+  }
+
+  .day-divider{
+    font-family:'JetBrains Mono', monospace; font-size: 10.5px; color: var(--muted-dim);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    margin: 18px 0 8px; display:flex; align-items:center; gap:10px;
+  }
+  .day-divider::after{ content:''; flex:1; height:1px; background: var(--line); }
+
+  .date-folder{ margin-bottom: 12px; }
+  .date-folder-header{
+    display:flex; align-items:center; gap:10px;
+    padding: 12px 14px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--brand);
+    border-radius: 10px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .date-folder-header .folder-date{
+    font-family:'Oswald', sans-serif; font-weight:600; font-size:14px;
+    text-transform:uppercase; letter-spacing:0.03em;
+    flex:1;
+  }
+  .date-folder-header .folder-count{
+    font-family:'JetBrains Mono', monospace; font-size:11px; color: var(--muted);
+    background: var(--panel-raised); border: 1px solid var(--line);
+    border-radius: 20px; padding: 2px 10px;
+  }
+  .date-folder-header .folder-chevron{
+    font-size: 12px; color: var(--muted); transition: transform 0.15s;
+    flex-shrink:0;
+  }
+  .date-folder.expanded .folder-chevron{ transform: rotate(90deg); }
+  .date-folder-body{ padding-top: 10px; }
+
+  /* Review view */
+  .fixture-summary{
+    border: 1px solid var(--line); border-radius: 10px; padding: 13px 14px; margin-bottom: 10px;
+    background: var(--panel-raised);
+  }
+  .fs-top{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px; }
+  .fs-title{ font-family:'Oswald', sans-serif; font-weight:600; font-size:14.5px; }
+  .fs-time{ font-family:'JetBrains Mono', monospace; font-size:10.5px; color:var(--muted); }
+  .fs-bar-track{ height:6px; border-radius: 4px; background: var(--line); overflow:hidden; display:flex; margin-bottom:8px; }
+  .fs-bar-seg{ height:100%; }
+  .fs-counts{ display:flex; gap:14px; font-family:'JetBrains Mono', monospace; font-size:11px; color:var(--muted); }
+  .fs-counts b{ color: var(--text); }
+
+  .modal-backdrop{
+    position:fixed; inset:0; background: rgba(0,0,0,0.6); z-index:60;
+    display:flex; align-items:flex-end; justify-content:center;
+  }
+  .modal{
+    background: var(--panel); border: 1px solid var(--line); border-radius: 16px 16px 0 0;
+    width:100%; max-width:720px; padding: 20px 18px 28px; max-height: 85vh; overflow-y:auto;
+  }
+  .modal h2{ font-family:'Oswald', sans-serif; text-transform:uppercase; letter-spacing:0.05em; font-size:15px; margin-bottom:14px; }
+
+  footer{ text-align:center; color: var(--muted-dim); font-family:'JetBrains Mono', monospace; font-size: 10.5px; padding: 30px 16px 10px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1><span class="dot"></span>Matchday Log</h1>
+    <span class="clock" id="clock">--:--:--</span>
+  </div>
+  <div class="ticker">
+    <span class="stat">FIXTURES <b id="statFixtures">0</b></span>
+    <span class="stat open">OPEN <b id="statOpen">0</b></span>
+    <span class="stat resolved">RESOLVED <b id="statResolved">0</b></span>
+  </div>
+</header>
+
+<main>
+  <div class="tabs">
+    <div class="tab active" data-tab="review">Fixtures</div>
+    <div class="tab" data-tab="log">Log</div>
+    <div class="tab" data-tab="clients">Clients</div>
+    <div class="tab" data-tab="admin">Admin</div>
+  </div>
+
+  <!-- CAPTURE TAB -->
+  <div id="tab-capture" style="display:none;">
+    <div class="card" id="loggingForBanner" style="border-color: var(--brand); background: var(--brand-tint);">
+      <div style="font-family:'JetBrains Mono', monospace; font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color: var(--brand); margin-bottom:6px;">Logging for</div>
+      <div id="loggingForTitle" style="font-family:'Oswald', sans-serif; font-weight:700; font-size:19px; letter-spacing:0.02em;"></div>
+      <div id="loggingForMeta" style="font-family:'JetBrains Mono', monospace; font-size:11.5px; color: var(--muted); margin-top:4px;"></div>
+    </div>
+
+    <div class="card" id="captureCard">
+      <h2>Log an entry</h2>
+      <div class="stack">
+        <div id="serviceFieldWrap">
+          <span class="field-label">Service</span>
+          <div class="cat-grid" id="serviceGrid"></div>
+        </div>
+        <div>
+          <span class="field-label">Category</span>
+          <div class="cat-grid" id="catGrid">
+            <button class="cat-btn" data-cat="Gallery Set Up"><span class="icon">🖼️</span>Gallery Set Up</button>
+            <button class="cat-btn" data-cat="Operator Error"><span class="icon">🧑‍💻</span>Operator Error</button>
+            <button class="cat-btn" data-cat="Software Fault"><span class="icon">💾</span>Software Fault</button>
+            <button class="cat-btn" data-cat="Engineering Issue"><span class="icon">🔧</span>Engineering Issue</button>
+            <button class="cat-btn" data-cat="Hardware Fault"><span class="icon">🔌</span>Hardware Fault</button>
+          </div>
+        </div>
+        <div>
+          <span class="field-label">Responsible team</span>
+          <div class="cat-grid" id="teamGrid">
+            <button type="button" class="cat-btn" data-team="Tech Ops">Tech Ops</button>
+            <button type="button" class="cat-btn" data-team="Producers">Producers</button>
+            <button type="button" class="cat-btn" data-team="Engineering">Engineering</button>
+            <button type="button" class="cat-btn" data-team="Client Service">Client Service</button>
+          </div>
+        </div>
+        <div>
+          <span class="field-label">Severity</span>
+          <div class="sev-row" id="sevRow">
+            <div class="sev-btn" data-sev="minor">Minor</div>
+            <div class="sev-btn" data-sev="moderate">Moderate</div>
+            <div class="sev-btn" data-sev="major">Major</div>
+          </div>
+        </div>
+        <div>
+          <label style="display:flex; align-items:center; gap:9px; cursor:pointer; padding:2px 0;">
+            <input type="checkbox" id="clientFacingCheck" style="width:19px; height:19px; accent-color:var(--brand); cursor:pointer; flex-shrink:0;" />
+            <span style="font-size:13.5px;">Client facing issue</span>
+          </label>
+        </div>
+        <div>
+          <span class="field-label" style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Note</span>
+            <span id="dictateBtn" style="display:none; color:var(--blue); cursor:pointer; text-transform:none; letter-spacing:0; font-size:11.5px;">🎤 Dictate</span>
+          </span>
+          <textarea id="noteInput" placeholder="What happened..."></textarea>
+        </div>
+        <button class="submit-btn" id="submitEntry" disabled>Log entry</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOG TAB -->
+  <div id="tab-log" style="display:none;">
+    <div class="filters" id="filters">
+      <div class="filter-chip active" data-filter="all">All</div>
+      <div class="filter-chip" data-filter="open">Open</div>
+      <div class="filter-chip" data-filter="Gallery Set Up">Gallery Set Up</div>
+      <div class="filter-chip" data-filter="Operator Error">Operator Error</div>
+      <div class="filter-chip" data-filter="Software Fault">Software Fault</div>
+      <div class="filter-chip" data-filter="Engineering Issue">Engineering Issue</div>
+      <div class="filter-chip" data-filter="Hardware Fault">Hardware Fault</div>
+      <div class="filter-chip" data-filter="clientFacing">Client Facing</div>
+    </div>
+    <div id="logList"></div>
+  </div>
+
+  <!-- REVIEW TAB -->
+  <div id="tab-review">
+    <div style="display:flex; gap:8px; margin-bottom:10px;">
+      <button class="ghost-btn" id="reviewNewFixtureBtn" style="border-color: var(--brand); color: var(--brand); flex:1;">+ New fixture</button>
+      <button class="ghost-btn" id="refreshFixturesBtn" style="border-color: var(--blue); color: var(--blue); flex:1;">↻ Refresh fixtures</button>
+    </div>
+    <div id="refreshFixturesStatus" style="display:none; font-size:11.5px; color:var(--muted); margin-bottom:12px;"></div>
+    <div id="reviewList"></div>
+  </div>
+
+  <!-- CLIENTS TAB -->
+  <div id="tab-clients" style="display:none;">
+    <div class="card">
+      <h2>Add a client</h2>
+      <div class="stack">
+        <div>
+          <span class="field-label">League</span>
+          <select id="clientLeagueInput">
+            <option value="">Select league...</option>
+            <option value="Premier League">Premier League</option>
+            <option value="EFL Championship">EFL Championship</option>
+            <option value="EFL League One">EFL League One</option>
+            <option value="EFL League Two">EFL League Two</option>
+            <option value="Scottish Premiership">Scottish Premiership</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div id="clubSelectWrap" style="display:none;">
+          <span class="field-label" style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Club</span>
+            <span id="refreshClubsBtn" style="color: var(--blue); cursor:pointer; text-transform:none; letter-spacing:0; font-size:11.5px;">↻ Refresh list</span>
+          </span>
+          <select id="clientClubSelect">
+            <option value="">Select club...</option>
+          </select>
+        </div>
+        <div id="clubLoadingMsg" style="display:none; font-size:11.5px; color:var(--muted);"></div>
+        <div id="clientNameWrap">
+          <span class="field-label">Club name</span>
+          <input id="clientNameInput" placeholder="e.g. Home Club" />
+        </div>
+        <div>
+          <span class="field-label">Home venue</span>
+          <input id="clientVenueInput" placeholder="Stadium" />
+        </div>
+        <div>
+          <span class="field-label">Client type</span>
+          <div class="sev-row" id="clientTypeRow">
+            <div class="sev-btn" data-type="Live Venue">Live Venue</div>
+            <div class="sev-btn" data-type="Local">Local</div>
+          </div>
+        </div>
+        <div>
+          <span class="field-label">Services</span>
+          <div class="cat-grid" id="clientServicesGrid">
+            <button type="button" class="cat-btn" data-service="Big Screen">Big Screen</button>
+            <button type="button" class="cat-btn" data-service="digiBOARD">digiBOARD</button>
+            <button type="button" class="cat-btn" data-service="digiRIBBON">digiRIBBON</button>
+            <button type="button" class="cat-btn" data-service="External">External</button>
+          </div>
+        </div>
+        <button class="submit-btn" id="addClientBtn">Add client</button>
+      </div>
+    </div>
+    <div id="clientsList"></div>
+  </div>
+
+  <!-- ADMIN TAB -->
+  <div id="tab-admin" style="display:none;">
+    <div class="card">
+      <h2>Backup</h2>
+      <div style="font-size:12px; color:var(--muted); margin-bottom:10px;">If saving is acting up, export a copy now and again — it downloads a file independent of the app's storage, so you can restore from it if needed.</div>
+      <div style="display:flex; gap:8px;">
+        <button class="ghost-btn" id="exportBtn" style="width:auto; flex:1;">↓ Export data</button>
+        <button class="ghost-btn" id="importBtn" style="width:auto; flex:1;">↑ Import data</button>
+      </div>
+      <input type="file" id="importFile" accept="application/json" style="display:none;" />
+    </div>
+
+    <div class="card">
+      <h2>Delete password <span id="deletePasswordStatus" style="font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--muted-dim); text-transform:none; letter-spacing:0;"></span></h2>
+      <div style="font-size:12px; color:var(--muted); margin-bottom:10px;">Required to delete a logged issue — a light deterrent against accidental deletion, not real security (it's stored in this browser and checked in the page itself). You'll be asked to create one the first time you try to delete something, or set it here.</div>
+      <div class="stack">
+        <input id="deletePasswordInput" type="password" placeholder="Set delete password" autocomplete="off" />
+        <div style="display:flex; gap:8px;">
+          <button class="ghost-btn" id="saveDeletePasswordBtn" style="width:auto; flex:1;">Save</button>
+          <button class="ghost-btn" id="clearDeletePasswordBtn" style="width:auto; flex:1;">Clear</button>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>API-Sports proxy <span id="proxyUrlStatus" style="font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--muted-dim); text-transform:none; letter-spacing:0;"></span></h2>
+      <div style="font-size:12px; color:var(--muted); margin-bottom:10px;">Only needed when running this app outside claude.ai — browsers block direct calls to API-Sports (CORS), so fixture lookups need a small proxy in between. Deploy the included Cloudflare Worker script and paste its URL here.</div>
+      <div class="stack">
+        <input id="proxyUrlInput" type="text" placeholder="https://your-worker.workers.dev" autocomplete="off" />
+        <div style="display:flex; gap:8px;">
+          <button class="ghost-btn" id="saveProxyUrlBtn" style="width:auto; flex:1;">Save</button>
+          <button class="ghost-btn" id="clearProxyUrlBtn" style="width:auto; flex:1;">Clear</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>Stored locally to your account · nothing shared</footer>
+
+<div id="toast" style="display:none; position:fixed; left:16px; right:16px; bottom:16px; max-width:688px; margin:0 auto; background: var(--panel-raised); border:1px solid var(--red); border-radius:10px; padding:12px 14px; z-index:70; font-size:13px;">
+  <div id="toastMsg" style="margin-bottom:8px; color: var(--text);"></div>
+  <div style="display:flex; gap:8px;">
+    <button id="toastRetry" class="submit-btn" style="margin-top:0; background: var(--red); flex:1;">Retry save</button>
+    <button id="toastDismiss" class="ghost-btn" style="width:auto; padding:10px 14px;">Dismiss</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  // If running outside Claude's artifact sandbox, window.storage won't exist.
+  // Polyfill it with localStorage so the app works standalone too.
+  if(!window.storage){
+    window.storage = {
+      async get(key, shared){
+        const val = localStorage.getItem(key);
+        if(val === null) throw new Error('key not found');
+        return { key, value: val, shared: !!shared };
+      },
+      async set(key, value, shared){
+        localStorage.setItem(key, value);
+        return { key, value, shared: !!shared };
+      },
+      async delete(key, shared){
+        localStorage.removeItem(key);
+        return { key, deleted: true, shared: !!shared };
+      },
+      async list(prefix, shared){
+        const keys = Object.keys(localStorage).filter(k => !prefix || k.startsWith(prefix));
+        return { keys, prefix, shared: !!shared };
+      }
+    };
+  }
+  const CATS = ["Gallery Set Up","Operator Error","Software Fault","Engineering Issue","Hardware Fault"];
+  const ALL_SERVICES = ["Big Screen","digiBOARD","digiRIBBON","External"];
+  let fixtures = [];
+  let entries = [];
+  let clients = [];
+  let selectedFixtureId = null;
+  let selectedCat = null;
+  let selectedTeam = null;
+  let selectedService = null;
+  let selectedSev = 'minor';
+  let activeFilter = 'all';
+  let activeTab = 'review';
+
+  const $ = (sel, el=document) => el.querySelector(sel);
+  const $$ = (sel, el=document) => Array.from(el.querySelectorAll(sel));
+
+  function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+  async function loadData(){
+    try{
+      const f = await window.storage.get('md-fixtures', false);
+      fixtures = f ? JSON.parse(f.value) : [];
+    }catch(e){ fixtures = []; }
+    try{
+      const e = await window.storage.get('md-entries', false);
+      entries = e ? JSON.parse(e.value) : [];
+    }catch(e){ entries = []; }
+    try{
+      const c = await window.storage.get('md-clients', false);
+      clients = c ? JSON.parse(c.value) : [];
+    }catch(e){ clients = []; }
+    if(fixtures.length && !selectedFixtureId){
+      selectedFixtureId = fixtures[fixtures.length-1].id;
+    }
+  }
+
+  async function saveFixtures(){
+    const res = await window.storage.set('md-fixtures', JSON.stringify(fixtures), false);
+    if(!res) throw new Error('Storage set failed');
+  }
+  async function saveEntries(){
+    const res = await window.storage.set('md-entries', JSON.stringify(entries), false);
+    if(!res) throw new Error('Storage set failed');
+  }
+  async function saveClients(){
+    const res = await window.storage.set('md-clients', JSON.stringify(clients), false);
+    if(!res) throw new Error('Storage set failed');
+  }
+
+  function showToast(message, retryFn){
+    const toast = $('#toast');
+    $('#toastMsg').textContent = message;
+    toast.style.display = 'block';
+    $('#toastRetry').onclick = async () => {
+      $('#toastRetry').textContent = 'Retrying...';
+      try{
+        await retryFn();
+        toast.style.display = 'none';
+      }catch(e){
+        $('#toastMsg').textContent = `Still failing: ${e.message || 'unknown error'}. Your entry is kept on screen — try again in a moment.`;
+        $('#toastRetry').textContent = 'Retry save';
+      }
+    };
+    $('#toastDismiss').onclick = () => { toast.style.display = 'none'; };
+  }
+
+  function sleep(ms){ return new Promise(res => setTimeout(res, ms)); }
+
+  async function persist(saveFn, label){
+    const delays = [400, 900, 1800]; // backoff between attempts
+    for(let attempt=0; attempt<=delays.length; attempt++){
+      try{
+        await saveFn();
+        return;
+      }catch(e){
+        if(attempt < delays.length){ await sleep(delays[attempt]); continue; }
+        console.error(label + ' failed', e);
+        showToast(`Couldn't save your ${label} (${e.message || 'unknown error'}) after several tries. This looks like a platform storage issue, not something wrong with your data — nothing was lost. Try again, or use Export as a backup while it's acting up.`, saveFn);
+      }
+    }
+  }
+
+  function fmtTime(iso){
+    const d = new Date(iso);
+    return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  }
+  function fmtDay(iso){
+    const d = new Date(iso);
+    return d.toLocaleDateString([], {weekday:'short', day:'numeric', month:'short'});
+  }
+
+  function openCountFor(fixtureId){
+    return entries.filter(e => e.fixtureId===fixtureId && !e.resolved).length;
+  }
+
+  // ---------- LOGGING-FOR BANNER ----------
+  function renderLoggingForBanner(){
+    const fx = fixtures.find(f => f.id === selectedFixtureId);
+    if(!fx){
+      $('#loggingForTitle').textContent = 'No fixture selected';
+      $('#loggingForMeta').textContent = 'Go to Fixtures and tap one to log an issue.';
+      renderServiceGrid();
+      return;
+    }
+    $('#loggingForTitle').textContent = fx.label;
+    const parts = [];
+    if(fx.matchDate) parts.push(new Date(fx.matchDate+'T00:00').toLocaleDateString([], {weekday:'short', day:'numeric', month:'short'}));
+    if(fx.kickoff) parts.push('KO ' + fx.kickoff);
+    if(fx.venue) parts.push(fx.venue);
+    $('#loggingForMeta').textContent = parts.join(' · ');
+    renderServiceGrid();
+  }
+
+  async function callClaudeAPI(prompt, maxTokens){
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: maxTokens || 1000,
+        messages: [{ role: "user", content: prompt }],
+        tools: [{ type: "web_search_20250305", name: "web_search" }]
+      })
+    });
+    if(!response.ok){
+      let body = null;
+      try{ body = await response.json(); }catch(e){ /* not JSON */ }
+      if(response.status === 429){
+        let resetMsg = '';
+        const resetsAt = body && body.resolved && body.resolved.limit && body.resolved.limit.resets_at;
+        if(resetsAt){
+          try{ resetMsg = ` It resets around ${new Date(resetsAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}.`; }catch(e){}
+        }
+        throw new Error(`You've hit your Claude usage limit for this session.${resetMsg} Enter details manually for now, or try the lookup again after it resets.`);
+      }
+      const detail = (body && body.error && body.error.message) || '';
+      throw new Error(`API ${response.status}${detail ? ': '+detail : ''}`);
+    }
+    const data = await response.json();
+    if(!data.content || !data.content.length) throw new Error('empty response from model');
+    return data.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+  }
+
+  function extractJson(text){
+    const match = text.match(/\{[\s\S]*\}/);
+    if(!match) throw new Error('model did not return JSON: ' + text.slice(0, 200));
+    try{ return JSON.parse(match[0]); }
+    catch(e){ throw new Error('model returned malformed JSON: ' + match[0].slice(0, 200)); }
+  }
+
+  // ---------- API-SPORTS (API-Football) integration ----------
+  // No key lives here on purpose — this file is public. The real key is held
+  // server-side in the Cloudflare Worker proxy (see cloudflare-worker.js) and
+  // attached to upstream requests there, never sent to or stored in the browser.
+  // This means API-Sports lookups now require a Proxy URL set on the Admin tab —
+  // without one, those lookups fall back to the AI web-search path instead.
+  const DEFAULT_APISPORTS_KEY = '';
+
+  const DELETE_PASSWORD_STORAGE_KEY = 'md-delete-password';
+  let cachedDeletePassword = null;
+
+  async function getDeletePassword(){
+    if(cachedDeletePassword !== null) return cachedDeletePassword;
+    try{
+      const res = await window.storage.get(DELETE_PASSWORD_STORAGE_KEY, false);
+      cachedDeletePassword = res ? res.value : '';
+    }catch(e){
+      cachedDeletePassword = '';
+    }
+    return cachedDeletePassword;
+  }
+
+  async function getApiSportsKey(){
+    return DEFAULT_APISPORTS_KEY;
+  }
+
+  const APISPORTS_LEAGUE_IDS = {
+    "Premier League": 39,
+    "EFL Championship": 40,
+    "EFL League One": 41,
+    "EFL League Two": 42,
+    "Scottish Premiership": 179
+  };
+
+  function apiSportsSeasonYear(){
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    return month >= 7 ? now.getFullYear() : now.getFullYear() - 1;
+  }
+
+  const PROXY_URL_STORAGE_KEY = 'md-apisports-proxy-url';
+  let cachedProxyUrl = null;
+
+  function normalizeProxyUrl(raw){
+    let val = (raw || '').trim().replace(/\/$/, '');
+    if(val && !/^https?:\/\//i.test(val)) val = 'https://' + val;
+    return val;
+  }
+
+  async function getProxyUrl(){
+    if(cachedProxyUrl !== null) return cachedProxyUrl;
+    try{
+      const res = await window.storage.get(PROXY_URL_STORAGE_KEY, false);
+      cachedProxyUrl = res ? normalizeProxyUrl(res.value) : '';
+    }catch(e){
+      cachedProxyUrl = '';
+    }
+    return cachedProxyUrl;
+  }
+
+  let lastApiSportsCallAt = 0;
+  const APISPORTS_MIN_INTERVAL_MS = 220; // paid plan: 300 requests/minute (200ms floor) — small margin to stay under that
+
+  // API-Sports is usable either via a proxy (key stays server-side, in the Worker)
+  // or via a client-side key (none is shipped in this file — see comment above).
+  async function apiSportsAvailable(){
+    const proxy = await getProxyUrl();
+    if(proxy) return true;
+    const key = await getApiSportsKey();
+    return !!key;
+  }
+
+  async function apiSportsFetch(path){
+    const proxy = await getProxyUrl();
+    const key = await getApiSportsKey();
+    if(!proxy && !key) throw new Error('no API-Sports key set and no proxy configured');
+    const waitFor = lastApiSportsCallAt + APISPORTS_MIN_INTERVAL_MS - Date.now();
+    if(waitFor > 0) await sleep(waitFor);
+    lastApiSportsCallAt = Date.now();
+    const base = proxy || 'https://v3.football.api-sports.io';
+    const headers = proxy ? {} : { 'x-apisports-key': key };
+    let response;
+    try{
+      response = await fetch(`${base}${path}`, { headers });
+    }catch(networkErr){
+      throw new Error(proxy
+        ? `Could not reach the proxy at ${proxy} (${networkErr.message}). Check the Proxy URL on the Admin tab.`
+        : `Browser blocked the direct request to API-Sports (${networkErr.message}). This is a CORS restriction — set a Proxy URL on the Admin tab to fix it.`);
+    }
+    if(!response.ok) throw new Error(`API-Sports error ${response.status}`);
+    const data = await response.json();
+    if(data.api && data.api.error){
+      throw new Error('API-Sports: ' + data.api.error);
+    }
+    if(data.errors && Array.isArray(data.errors) ? data.errors.length : Object.keys(data.errors || {}).length){
+      throw new Error('API-Sports: ' + JSON.stringify(data.errors));
+    }
+    return data;
+  }
+
+  async function lookupLeagueClubsApiSports(league){
+    const leagueId = APISPORTS_LEAGUE_IDS[league];
+    if(!leagueId) throw new Error('league not supported by API-Sports integration');
+    const season = apiSportsSeasonYear();
+    const data = await apiSportsFetch(`/teams?league=${leagueId}&season=${season}`);
+    const clubs = (data.response || []).map(item => ({
+      name: item.team.name,
+      venue: (item.venue && item.venue.name) ? item.venue.name : null
+    }));
+    if(!clubs.length) throw new Error('no clubs returned from API-Sports');
+    return { clubs, season: String(season) };
+  }
+
+  async function findApiSportsTeamId(clientName, cachedId){
+    if(cachedId) return cachedId;
+    const data = await apiSportsFetch(`/teams?search=${encodeURIComponent(clientName)}`);
+    const list = data.response || [];
+    if(!list.length) throw new Error('team not found on API-Sports: ' + clientName);
+    const exact = list.find(item => item.team.name.toLowerCase() === clientName.toLowerCase());
+    return (exact || list[0]).team.id;
+  }
+
+  async function apiSportsUpcomingHomeFixtures(clientName, cachedId, maxResults){
+    const teamId = await findApiSportsTeamId(clientName, cachedId);
+    const todayStr = new Date().toISOString().slice(0,10);
+    const rangeEnd = new Date();
+    rangeEnd.setDate(rangeEnd.getDate() + 21); // next 3 weeks
+    const toStr = rangeEnd.toISOString().slice(0,10);
+    const season = apiSportsSeasonYear();
+    const data = await apiSportsFetch(`/fixtures?team=${teamId}&from=${todayStr}&to=${toStr}&season=${season}`);
+    const list = data.response || [];
+    const homeUpcoming = list
+      .filter(item => item.teams && item.teams.home && item.teams.home.id === teamId)
+      .sort((a,b) => new Date(a.fixture.date) - new Date(b.fixture.date))
+      .slice(0, maxResults);
+    if(!homeUpcoming.length) throw new Error('no home fixture found in the next 3 weeks on API-Sports');
+    return homeUpcoming.map(next => {
+      const dt = new Date(next.fixture.date);
+      return {
+        opponent: next.teams.away.name,
+        competition: next.league ? next.league.name : '',
+        match_date: next.fixture.date.slice(0,10),
+        kickoff_time: `${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`,
+        venue: (next.fixture.venue && next.fixture.venue.name) ? next.fixture.venue.name : null,
+        confidence: 'high',
+        source: 'API-Sports',
+        teamId
+      };
+    });
+  }
+
+  async function lookupFixtureApiSports(clientName, cachedId){
+    const results = await apiSportsUpcomingHomeFixtures(clientName, cachedId, 1);
+    return results[0];
+  }
+
+  async function lookupLeagueClubs(league){
+    const useApiSports = await apiSportsAvailable();
+    if(useApiSports && APISPORTS_LEAGUE_IDS[league]){
+      // API-Sports is configured for this league — use it exclusively.
+      // No silent fallback: the AI web-search path needs an Anthropic key,
+      // which isn't available outside claude.ai, so falling through to it
+      // just produces a confusing "Failed to fetch" that masks the real error.
+      return await lookupLeagueClubsApiSports(league);
+    }
+    const sourceMap = {
+      "Premier League": "premierleague.com",
+      "EFL Championship": "efl.com",
+      "EFL League One": "efl.com",
+      "EFL League Two": "efl.com",
+      "Scottish Premiership": "spfl.co.uk"
+    };
+    const source = sourceMap[league] || "the competition's official site";
+    const todayStr = new Date().toISOString().slice(0,10);
+    const prompt = `Today's date is ${todayStr}. Search ${source} and find the current, complete, official list of clubs competing in the ${league} for the season that is active or upcoming as of ${todayStr} — NOT any prior season. You must base this only on ${source} or the clubs' own official sites — do not use fan sites, aggregators, or news articles, and do not rely on memorized or outdated knowledge. Pay close attention to promotion and relegation: a club that was relegated or promoted out of this division before ${todayStr} must NOT be included, and a club promoted or relegated into this division must be included, even if that contradicts older information you may recall. Respond with ONLY a single JSON object, no markdown fences, no commentary, in exactly this shape: {"clubs": [{"name": string, "venue": string or null}], "season": string or null}. Include every club currently in the division — for Premier League and Scottish Premiership that's the full division; for EFL divisions include all clubs.`;
+    const text = await callClaudeAPI(prompt, 2000);
+    const parsed = extractJson(text);
+    if(!parsed.clubs || !parsed.clubs.length) throw new Error('no clubs returned');
+    return parsed;
+  }
+
+  async function getClubsForLeague(league, forceRefresh){
+    const cacheKey = 'md-league-clubs-' + league.replace(/\s+/g,'-').toLowerCase();
+    if(!forceRefresh){
+      try{
+        const cached = await window.storage.get(cacheKey, false);
+        if(cached){
+          const parsed = JSON.parse(cached.value);
+          const ageMs = Date.now() - (parsed.fetchedAt || 0);
+          if(ageMs < 1000*60*60*24*14){ // 14 day cache
+            return parsed;
+          }
+        }
+      }catch(e){ /* no cache yet */ }
+    }
+    const result = await lookupLeagueClubs(league);
+    const toCache = { clubs: result.clubs, season: result.season, fetchedAt: Date.now() };
+    try{ await window.storage.set(cacheKey, JSON.stringify(toCache), false); }catch(e){ /* non-fatal */ }
+    return toCache;
+  }
+
+  async function lookupFixture(clientName, venueHint, league, client){
+    const useApiSports = await apiSportsAvailable();
+    if(useApiSports && APISPORTS_LEAGUE_IDS[league]){
+      // Same reasoning as lookupLeagueClubs above — no silent fallback.
+      const result = await lookupFixtureApiSports(clientName, client && client.apiSportsTeamId);
+      if(client && result.teamId) client.apiSportsTeamId = result.teamId;
+      return result;
+    }
+    const leagueSourceMap = {
+      "Premier League": "premierleague.com (official Premier League site) or the club's own official website",
+      "EFL Championship": "efl.com (official EFL site) or the club's own official website",
+      "EFL League One": "efl.com (official EFL site) or the club's own official website",
+      "EFL League Two": "efl.com (official EFL site) or the club's own official website",
+      "Scottish Premiership": "spfl.co.uk (official SPFL site) or the club's own official website"
+    };
+    const sourceHint = leagueSourceMap[league] || "the club's own official site or a reliable football fixtures source";
+    const todayStr = new Date().toISOString().slice(0,10);
+    const prompt = `Today's date is ${todayStr}. Search the web and find the next scheduled HOME match (all competitions, e.g. league, domestic cup, European competition) for the football club "${clientName}"${league ? `, which plays in the ${league}` : ''}${venueHint ? ` at their home venue ${venueHint}` : ''}, on or after ${todayStr}. Only consider matches where "${clientName}" is the home team — skip any away fixtures even if they come sooner. You must base your answer only on ${sourceHint} — do not use fan sites, aggregators, betting sites, or general news articles, even if they appear in search results. If those official sources don't have a confirmed next home match, say so rather than using another source. Respond with ONLY a single JSON object and NOTHING else — no explanation, no commentary, no markdown fences, before or after it. Output exactly this shape: {"opponent": string, "competition": string, "match_date": "YYYY-MM-DD" or null, "kickoff_time": "HH:MM" or null, "venue": string or null, "confidence": "high"|"medium"|"low", "source": string or null}. If you cannot confidently find a specific next HOME match on or after ${todayStr} from an official source, set match_date to null and confidence to "low".`;
+    const text = await callClaudeAPI(prompt, 1000);
+    return extractJson(text);
+  }
+
+  async function lookupUpcomingFixtures(clientName, venueHint, league, client, maxResults){
+    const useApiSports = await apiSportsAvailable();
+    if(useApiSports && APISPORTS_LEAGUE_IDS[league]){
+      // One API call already returns every fixture in the date range, so asking
+      // for up to `maxResults` of them costs nothing extra over asking for one.
+      const results = await apiSportsUpcomingHomeFixtures(clientName, client && client.apiSportsTeamId, maxResults);
+      if(client && results[0] && results[0].teamId) client.apiSportsTeamId = results[0].teamId;
+      return results;
+    }
+    // AI fallback only ever finds one candidate match.
+    const single = await lookupFixture(clientName, venueHint, league, client);
+    return single && single.match_date ? [single] : [];
+  }
+
+  function showNewFixtureModal(){
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    const clientOptions = clients.slice().sort((a,b)=>a.name.localeCompare(b.name))
+      .map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+    const hasClients = clients.length > 0;
+    backdrop.innerHTML = `
+      <div class="modal">
+        <h2>New fixture</h2>
+        <div class="stack">
+          <div>
+            <span class="field-label">Client</span>
+            ${hasClients ? `
+              <select id="clientSelect">
+                <option value="">Select client...</option>
+                ${clientOptions}
+                <option value="__custom__">Other (type manually)</option>
+              </select>
+            ` : `<div style="font-size:12.5px; color:var(--muted); padding:6px 0;">No clients saved yet — add one on the Clients tab, or type below.</div>`}
+          </div>
+          <button class="ghost-btn" id="autoFillBtn" style="${hasClients ? '' : 'display:none;'} border-color: var(--blue); color: var(--blue);" disabled>🔍 Auto-fill next fixture from web</button>
+          <div id="autoFillStatus" style="font-size:11.5px; color:var(--muted); display:none;"></div>
+          <div id="manualHomeWrap" style="${hasClients ? 'display:none;' : ''}">
+            <span class="field-label">Home club</span>
+            <input id="homeInput" placeholder="e.g. Home Club" />
+          </div>
+          <div>
+            <span class="field-label">Opponent</span>
+            <input id="awayInput" placeholder="e.g. Away Club" />
+          </div>
+          <div class="row2">
+            <div>
+              <span class="field-label">Date</span>
+              <input id="dateInput" type="date" />
+            </div>
+            <div>
+              <span class="field-label">Kick-off</span>
+              <input id="koInput" type="time" />
+            </div>
+          </div>
+          <div>
+            <span class="field-label">Venue</span>
+            <input id="venueInput" placeholder="Stadium" />
+          </div>
+          <button class="submit-btn" id="createFixtureBtn">Create fixture</button>
+          <button class="ghost-btn" id="cancelFixtureBtn">Cancel</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(backdrop);
+    backdrop.onclick = (e) => { if(e.target===backdrop) backdrop.remove(); };
+    $('#cancelFixtureBtn', backdrop).onclick = () => backdrop.remove();
+
+    const clientSelect = $('#clientSelect', backdrop);
+    const autoFillBtn = $('#autoFillBtn', backdrop);
+    const statusEl = $('#autoFillStatus', backdrop);
+
+    if(clientSelect){
+      clientSelect.onchange = () => {
+        const wrap = $('#manualHomeWrap', backdrop);
+        if(clientSelect.value === '__custom__'){
+          wrap.style.display = '';
+          autoFillBtn.disabled = true;
+          $('#homeInput', backdrop).focus();
+        } else {
+          wrap.style.display = 'none';
+          autoFillBtn.disabled = !clientSelect.value;
+          const client = clients.find(c => c.id===clientSelect.value);
+          if(client) $('#venueInput', backdrop).value = client.venue || '';
+        }
+        statusEl.style.display = 'none';
+      };
+    }
+
+    if(autoFillBtn){
+      autoFillBtn.onclick = async () => {
+        const client = clients.find(c => c.id === (clientSelect && clientSelect.value));
+        if(!client) return;
+        autoFillBtn.disabled = true;
+        autoFillBtn.textContent = 'Searching...';
+        statusEl.style.display = '';
+        statusEl.textContent = `Looking up ${client.name}'s next fixture...`;
+        try{
+          const result = await lookupFixture(client.name, client.venue, client.league, client);
+          if(result.teamId) await persist(saveClients, 'client');
+          if(result.match_date){
+            $('#awayInput', backdrop).value = result.opponent || '';
+            $('#dateInput', backdrop).value = result.match_date;
+            if(result.kickoff_time) $('#koInput', backdrop).value = result.kickoff_time;
+            if(result.venue) $('#venueInput', backdrop).value = result.venue;
+            statusEl.textContent = `Found: ${result.opponent || '?'} (${result.competition || 'competition unknown'}) — confidence: ${result.confidence}${result.source ? `, via ${result.source}` : ''}. Check the details before creating.`;
+          } else {
+            statusEl.textContent = `Couldn't confidently find a next fixture — enter details manually.`;
+          }
+        }catch(err){
+          statusEl.textContent = `Lookup failed: ${err.message || 'unknown error'}. You can try again or enter details manually.`;
+        }
+        autoFillBtn.disabled = false;
+        autoFillBtn.textContent = '🔍 Auto-fill next fixture from web';
+      };
+    }
+
+    $('#createFixtureBtn', backdrop).onclick = async () => {
+      let home = '';
+      if(clientSelect && clientSelect.value && clientSelect.value !== '__custom__'){
+        const client = clients.find(c => c.id===clientSelect.value);
+        home = client ? client.name : '';
+      } else {
+        home = $('#homeInput', backdrop) ? $('#homeInput', backdrop).value.trim() : '';
+      }
+      const away = $('#awayInput', backdrop).value.trim();
+      const venue = $('#venueInput', backdrop).value.trim();
+      const ko = $('#koInput', backdrop).value;
+      const matchDate = $('#dateInput', backdrop).value;
+      if(!home && !away){
+        (clientSelect || $('#homeInput', backdrop)).focus();
+        return;
+      }
+      let label = home && away ? `${home} v ${away}` : (home || away);
+      const fx = { id: uid(), label, home, away, venue, kickoff: ko, matchDate, closed: false, createdAt: new Date().toISOString() };
+      fixtures.push(fx);
+      selectedFixtureId = fx.id;
+      await persist(saveFixtures, 'fixture');
+      backdrop.remove();
+      renderAll();
+    };
+  }
+
+  function showEditClientModal(clientId){
+    const client = clients.find(c => c.id === clientId);
+    if(!client) return;
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    backdrop.innerHTML = `
+      <div class="modal">
+        <h2>Edit client</h2>
+        <div class="stack">
+          <div>
+            <span class="field-label">Club name</span>
+            <input id="editNameInput" />
+          </div>
+          <div>
+            <span class="field-label">Home venue</span>
+            <input id="editVenueInput" />
+          </div>
+          <div>
+            <span class="field-label">League</span>
+            <select id="editLeagueInput">
+              <option value="">Select league...</option>
+              <option value="Premier League">Premier League</option>
+              <option value="EFL Championship">EFL Championship</option>
+              <option value="EFL League One">EFL League One</option>
+              <option value="EFL League Two">EFL League Two</option>
+              <option value="Scottish Premiership">Scottish Premiership</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div>
+            <span class="field-label">Client type</span>
+            <div class="sev-row" id="editTypeRow">
+              <div class="sev-btn" data-type="Live Venue">Live Venue</div>
+              <div class="sev-btn" data-type="Local">Local</div>
+            </div>
+          </div>
+          <div>
+            <span class="field-label">Services</span>
+            <div class="cat-grid" id="editServicesGrid">
+              <button type="button" class="cat-btn" data-service="Big Screen">Big Screen</button>
+              <button type="button" class="cat-btn" data-service="digiBOARD">digiBOARD</button>
+              <button type="button" class="cat-btn" data-service="digiRIBBON">digiRIBBON</button>
+              <button type="button" class="cat-btn" data-service="External">External</button>
+            </div>
+          </div>
+          <button class="submit-btn" id="saveEditClientBtn">Save changes</button>
+          <button class="ghost-btn" id="cancelEditClientBtn">Cancel</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(backdrop);
+    backdrop.onclick = (e) => { if(e.target===backdrop) backdrop.remove(); };
+    $('#cancelEditClientBtn', backdrop).onclick = () => backdrop.remove();
+
+    $('#editNameInput', backdrop).value = client.name || '';
+    $('#editVenueInput', backdrop).value = client.venue || '';
+    $('#editLeagueInput', backdrop).value = client.league || '';
+
+    let editType = client.type || null;
+    $$('.sev-btn', $('#editTypeRow', backdrop)).forEach(b => {
+      b.classList.toggle('selected', b.dataset.type === editType);
+    });
+    $('#editTypeRow', backdrop).addEventListener('click', (e) => {
+      const btn = e.target.closest('.sev-btn');
+      if(!btn) return;
+      editType = btn.dataset.type;
+      $$('.sev-btn', $('#editTypeRow', backdrop)).forEach(b => b.classList.toggle('selected', b===btn));
+    });
+
+    let editServices = (client.services || []).slice();
+    $$('.cat-btn', $('#editServicesGrid', backdrop)).forEach(b => {
+      b.classList.toggle('selected', editServices.includes(b.dataset.service));
+    });
+    $('#editServicesGrid', backdrop).addEventListener('click', (e) => {
+      const btn = e.target.closest('.cat-btn');
+      if(!btn) return;
+      const service = btn.dataset.service;
+      const idx = editServices.indexOf(service);
+      if(idx === -1){ editServices.push(service); btn.classList.add('selected'); }
+      else { editServices.splice(idx, 1); btn.classList.remove('selected'); }
+    });
+
+    $('#saveEditClientBtn', backdrop).onclick = async () => {
+      const name = $('#editNameInput', backdrop).value.trim();
+      if(!name){ $('#editNameInput', backdrop).focus(); return; }
+      client.name = name;
+      client.venue = $('#editVenueInput', backdrop).value.trim();
+      client.league = $('#editLeagueInput', backdrop).value;
+      client.type = editType;
+      client.services = editServices.slice();
+      await persist(saveClients, 'client');
+      backdrop.remove();
+      renderClients();
+    };
+  }
+
+  // ---------- CAPTURE TAB ----------
+  function getServiceOptionsForCurrentFixture(){
+    const fx = fixtures.find(f => f.id === selectedFixtureId);
+    if(!fx) return ALL_SERVICES;
+    const client = clients.find(c => (c.name||'').toLowerCase() === (fx.home||'').toLowerCase());
+    if(client && client.services && client.services.length) return client.services;
+    return ALL_SERVICES;
+  }
+
+  function renderServiceGrid(){
+    const grid = $('#serviceGrid');
+    const options = getServiceOptionsForCurrentFixture();
+    grid.innerHTML = options.map(s => `<button type="button" class="cat-btn" data-service-opt="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join('');
+    $$('.cat-btn', grid).forEach(b => b.classList.toggle('selected', b.dataset.serviceOpt===selectedService));
+  }
+
+  $('#serviceGrid').addEventListener('click', (e) => {
+    const btn = e.target.closest('.cat-btn');
+    if(!btn) return;
+    selectedService = btn.dataset.serviceOpt;
+    renderServiceGrid();
+    renderCaptureState();
+  });
+
+  function renderCaptureState(){
+    $$('#catGrid .cat-btn').forEach(b => b.classList.toggle('selected', b.dataset.cat===selectedCat));
+    $$('#teamGrid .cat-btn').forEach(b => b.classList.toggle('selected', b.dataset.team===selectedTeam));
+    $$('#sevRow .sev-btn').forEach(b => b.classList.toggle('selected', b.dataset.sev===selectedSev));
+    const noteVal = $('#noteInput').value.trim();
+    $('#submitEntry').disabled = !(selectedFixtureId && selectedCat && selectedService && selectedTeam && noteVal.length>0);
+    $('#captureCard').style.opacity = fixtures.length ? '1' : '0.5';
+  }
+
+  $('#catGrid').addEventListener('click', (e) => {
+    const btn = e.target.closest('.cat-btn');
+    if(!btn) return;
+    selectedCat = btn.dataset.cat;
+    renderCaptureState();
+  });
+  $('#teamGrid').addEventListener('click', (e) => {
+    const btn = e.target.closest('.cat-btn');
+    if(!btn) return;
+    selectedTeam = btn.dataset.team;
+    renderCaptureState();
+  });
+  $('#sevRow').addEventListener('click', (e) => {
+    const btn = e.target.closest('.sev-btn');
+    if(!btn) return;
+    selectedSev = btn.dataset.sev;
+    renderCaptureState();
+  });
+  $('#noteInput').addEventListener('input', renderCaptureState);
+
+  // ---------- VOICE DICTATION (Note field) ----------
+  // Uses the browser's built-in Web Speech API — no server, no key. Needs a secure
+  // context (https:// or localhost); on file:// or http:// it may silently not work,
+  // which is why the button stays hidden unless the browser actually exposes the API.
+  const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let dictationRecognition = null;
+  let isDictating = false;
+  let dictationBaseText = '';
+
+  function setDictateBtnState(active){
+    const btn = $('#dictateBtn');
+    if(!btn) return;
+    btn.textContent = active ? '⏹ Stop dictating' : '🎤 Dictate';
+    btn.style.color = active ? 'var(--red)' : 'var(--blue)';
+  }
+
+  function startDictation(){
+    if(!SpeechRecognitionCtor || isDictating) return;
+    const noteInput = $('#noteInput');
+    dictationBaseText = noteInput.value;
+    if(dictationBaseText && !/\s$/.test(dictationBaseText)) dictationBaseText += ' ';
+
+    dictationRecognition = new SpeechRecognitionCtor();
+    dictationRecognition.lang = 'en-GB';
+    dictationRecognition.continuous = true;
+    dictationRecognition.interimResults = true;
+
+    dictationRecognition.onresult = (e) => {
+      let finalChunk = '', interimChunk = '';
+      for(let i = e.resultIndex; i < e.results.length; i++){
+        const transcript = e.results[i][0].transcript;
+        if(e.results[i].isFinal) finalChunk += transcript;
+        else interimChunk += transcript;
+      }
+      if(finalChunk) dictationBaseText += finalChunk.trim() + ' ';
+      noteInput.value = dictationBaseText + interimChunk;
+      renderCaptureState();
+    };
+    dictationRecognition.onerror = (e) => {
+      if(e.error === 'not-allowed' || e.error === 'service-not-allowed'){
+        alert('Microphone access was blocked — allow it for this page (in your browser\'s site settings) to use dictation.');
+      } else if(e.error !== 'no-speech' && e.error !== 'aborted'){
+        console.error('dictation error', e.error);
+      }
+      stopDictation();
+    };
+    dictationRecognition.onend = () => {
+      // Some browsers end recognition after a short pause even with continuous:true —
+      // restart automatically while the user still has dictation toggled on.
+      if(isDictating){
+        try{ dictationRecognition.start(); }catch(e){ stopDictation(); }
+      }
+    };
+
+    try{
+      dictationRecognition.start();
+      isDictating = true;
+      setDictateBtnState(true);
+    }catch(e){
+      console.error('could not start dictation', e);
+    }
+  }
+
+  function stopDictation(){
+    isDictating = false;
+    if(dictationRecognition){
+      try{ dictationRecognition.stop(); }catch(e){ /* already stopped */ }
+    }
+    setDictateBtnState(false);
+  }
+
+  function initDictation(){
+    const btn = $('#dictateBtn');
+    if(!btn || !SpeechRecognitionCtor) return; // stays hidden — unsupported browser/context
+    btn.style.display = '';
+    btn.onclick = () => { isDictating ? stopDictation() : startDictation(); };
+  }
+
+  $('#submitEntry').addEventListener('click', async () => {
+    const note = $('#noteInput').value.trim();
+    if(!selectedFixtureId || !selectedCat || !selectedService || !selectedTeam || !note) return;
+    const entry = {
+      id: uid(),
+      fixtureId: selectedFixtureId,
+      category: selectedCat,
+      service: selectedService,
+      team: selectedTeam,
+      severity: selectedSev,
+      clientFacing: $('#clientFacingCheck').checked,
+      note,
+      resolved: false,
+      timestamp: new Date().toISOString()
+    };
+    entries.push(entry);
+    await persist(saveEntries, 'entry');
+    stopDictation();
+    $('#noteInput').value = '';
+    $('#clientFacingCheck').checked = false;
+    selectedCat = null;
+    selectedService = null;
+    selectedTeam = null;
+    selectedSev = 'minor';
+    renderAll();
+    $('#submitEntry').textContent = 'Logged ✓';
+    setTimeout(() => { $('#submitEntry').textContent = 'Log entry'; }, 900);
+  });
+
+  // ---------- LOG TAB ----------
+  $('#filters').addEventListener('click', (e) => {
+    const chip = e.target.closest('.filter-chip');
+    if(!chip) return;
+    activeFilter = chip.dataset.filter;
+    renderLog();
+  });
+
+  function escapeHtml(s){
+    return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function fixtureLabel(id){
+    const fx = fixtures.find(f => f.id===id);
+    return fx ? fx.label : 'Unknown fixture';
+  }
+
+  function renderLog(){
+    $$('.filter-chip').forEach(c => c.classList.toggle('active', c.dataset.filter===activeFilter));
+    const list = $('#logList');
+    let items = entries.slice().sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+    if(activeFilter==='open') items = items.filter(e => !e.resolved);
+    else if(activeFilter==='clientFacing') items = items.filter(e => e.clientFacing);
+    else if(activeFilter!=='all') items = items.filter(e => e.category===activeFilter);
+
+    if(!items.length){
+      list.innerHTML = `<div class="empty">No entries yet.<br>Tap into a fixture on the Fixtures tab to log one.</div>`;
+      return;
+    }
+
+    let html = '';
+    let lastDay = null;
+    items.forEach(e => {
+      const day = fmtDay(e.timestamp);
+      if(day !== lastDay){
+        html += `<div class="day-divider">${day}</div>`;
+        lastDay = day;
+      }
+      html += `
+        <div class="entry sev-${e.severity} ${e.resolved?'resolved':''}" data-id="${e.id}" style="cursor:pointer;">
+          <div class="entry-top">
+            <div class="entry-meta">
+              <span class="entry-cat">${escapeHtml(e.category)}${e.service ? ' · ' + escapeHtml(e.service) : ''}</span>
+              <span class="entry-time">${fmtTime(e.timestamp)}</span>
+            </div>
+            <button class="resolve-btn ${e.resolved?'done':''}" data-id="${e.id}">${e.resolved?'Resolved':'Resolve'}</button>
+          </div>
+          <div class="entry-fixture" style="margin-bottom:5px;">${escapeHtml(fixtureLabel(e.fixtureId))}${e.team ? ' · <span style="color:var(--amber);">' + escapeHtml(e.team) + '</span>' : ''}${e.clientFacing ? ' · <span style="color:var(--red);">Client facing</span>' : ''}</div>
+          <div class="entry-note ${e.resolved?'resolved-text':''}">${escapeHtml(e.note)}</div>
+        </div>
+      `;
+    });
+    list.innerHTML = html;
+
+    $$('.resolve-btn', list).forEach(btn => {
+      btn.onclick = async (ev) => {
+        ev.stopPropagation();
+        const entry = entries.find(x => x.id===btn.dataset.id);
+        if(entry){
+          entry.resolved = !entry.resolved;
+          await persist(saveEntries, 'entry');
+          renderAll();
+        }
+      };
+    });
+
+    $$('.entry', list).forEach(card => {
+      card.onclick = () => showEntryDetailModal(card.dataset.id);
+    });
+  }
+
+  function showEntryDetailModal(entryId){
+    const e = entries.find(x => x.id === entryId);
+    if(!e) return;
+    const dt = new Date(e.timestamp);
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    backdrop.innerHTML = `
+      <div class="modal">
+        <h2>Issue detail</h2>
+        <div class="stack">
+          <div>
+            <span class="field-label">Fixture</span>
+            <div style="font-family:'Oswald', sans-serif; font-weight:600; font-size:16px;">${escapeHtml(fixtureLabel(e.fixtureId))}</div>
+          </div>
+          <div class="row2">
+            <div>
+              <span class="field-label">Category</span>
+              <div>${escapeHtml(e.category)}</div>
+            </div>
+            <div>
+              <span class="field-label">Service</span>
+              <div>${e.service ? escapeHtml(e.service) : '—'}</div>
+            </div>
+          </div>
+          <div class="row2">
+            <div>
+              <span class="field-label">Responsible team</span>
+              <div style="color:var(--amber);">${e.team ? escapeHtml(e.team) : '—'}</div>
+            </div>
+            <div>
+              <span class="field-label">Severity</span>
+              <div style="color:${e.severity==='major' ? 'var(--red)' : e.severity==='moderate' ? 'var(--amber)' : 'var(--blue)'}; text-transform:capitalize;">${escapeHtml(e.severity)}</div>
+            </div>
+          </div>
+          <div class="row2">
+            <div>
+              <span class="field-label">Logged</span>
+              <div style="font-family:'JetBrains Mono', monospace; font-size:12.5px; color:var(--muted);">${fmtDay(e.timestamp)} · ${fmtTime(e.timestamp)}</div>
+            </div>
+            <div>
+              <span class="field-label">Client facing</span>
+              <div style="color:${e.clientFacing ? 'var(--red)' : 'var(--muted)'};">${e.clientFacing ? 'Yes' : 'No'}</div>
+            </div>
+          </div>
+          <div>
+            <span class="field-label">Note</span>
+            <div style="white-space:pre-wrap; line-height:1.5;">${escapeHtml(e.note)}</div>
+          </div>
+          <div>
+            <span class="field-label">Status</span>
+            <div style="color:${e.resolved ? 'var(--signal)' : 'var(--red)'};">${e.resolved ? 'Resolved' : 'Open'}</div>
+          </div>
+          <button class="submit-btn" id="toggleResolveInModal" style="${e.resolved ? 'background:var(--muted-dim);' : ''}">${e.resolved ? 'Reopen' : 'Mark resolved'}</button>
+          <button class="ghost-btn" id="deleteEntryBtn" style="border-color:var(--red); color:var(--red);">Delete entry</button>
+          <button class="ghost-btn" id="closeEntryModalBtn">Close</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(backdrop);
+    backdrop.onclick = (ev) => { if(ev.target===backdrop) backdrop.remove(); };
+    $('#closeEntryModalBtn', backdrop).onclick = () => backdrop.remove();
+    $('#toggleResolveInModal', backdrop).onclick = async () => {
+      e.resolved = !e.resolved;
+      await persist(saveEntries, 'entry');
+      backdrop.remove();
+      renderAll();
+    };
+    $('#deleteEntryBtn', backdrop).onclick = async () => {
+      const stored = await getDeletePassword();
+      if(!stored){
+        const newPass = prompt('No delete password is set yet. Create one now — it will be required for all future deletions:');
+        if(!newPass) return;
+        try{
+          await window.storage.set(DELETE_PASSWORD_STORAGE_KEY, newPass, false);
+          cachedDeletePassword = newPass;
+        }catch(err){
+          alert('Could not save the password: ' + (err.message || 'unknown error'));
+          return;
+        }
+      } else {
+        const entered = prompt('Enter the delete password to remove this entry:');
+        if(entered === null) return;
+        if(entered !== stored){ alert('Incorrect password.'); return; }
+      }
+      entries = entries.filter(x => x.id !== e.id);
+      await persist(saveEntries, 'entry');
+      backdrop.remove();
+      renderAll();
+      if(activeTab==='log') renderLog();
+    };
+  }
+
+  // ---------- REVIEW TAB ----------
+  let expandedDateFolders = new Set();
+
+  function dateKeyFor(fx){
+    return fx.matchDate || 'undated';
+  }
+
+  function formatFolderDate(dateKey){
+    if(dateKey === 'undated') return 'No date set';
+    const d = new Date(dateKey + 'T00:00');
+    return d.toLocaleDateString([], {weekday:'long', day:'numeric', month:'long'});
+  }
+
+  function renderReview(){
+    const list = $('#reviewList');
+    if(!fixtures.length){
+      list.innerHTML = `<div class="empty">No fixtures yet.<br>Tap + New fixture above to add one.</div>`;
+      return;
+    }
+    const sorted = fixtures.slice().sort((a,b) => {
+      if(!a.matchDate && !b.matchDate) return new Date(b.createdAt) - new Date(a.createdAt);
+      if(!a.matchDate) return 1;
+      if(!b.matchDate) return -1;
+      return new Date(a.matchDate) - new Date(b.matchDate);
+    });
+
+    const groups = [];
+    const groupIndex = {};
+    sorted.forEach(fx => {
+      const key = dateKeyFor(fx);
+      if(!(key in groupIndex)){
+        groupIndex[key] = groups.length;
+        groups.push({ key, fixtures: [] });
+      }
+      groups[groupIndex[key]].fixtures.push(fx);
+    });
+
+    if(expandedDateFolders.size === 0 && groups.length){
+      expandedDateFolders.add(groups[0].key);
+    }
+
+    let html = '';
+    groups.forEach(group => {
+      const isExpanded = expandedDateFolders.has(group.key);
+      html += `
+        <div class="date-folder ${isExpanded ? 'expanded' : ''}" data-date-key="${escapeHtml(group.key)}">
+          <div class="date-folder-header">
+            <span class="folder-chevron">▸</span>
+            <span class="folder-date">${escapeHtml(formatFolderDate(group.key))}</span>
+            <span class="folder-count">${group.fixtures.length} fixture${group.fixtures.length===1?'':'s'}</span>
+          </div>
+          <div class="date-folder-body" style="${isExpanded ? '' : 'display:none;'}">
+      `;
+      group.fixtures.forEach(fx => {
+        const fEntries = entries.filter(e => e.fixtureId===fx.id);
+        const open = fEntries.filter(e => !e.resolved).length;
+        const resolved = fEntries.length - open;
+        const critical = fEntries.filter(e => e.severity==='major' && !e.resolved).length;
+        const total = fEntries.length || 1;
+        const openPct = (open/total)*100;
+        const resPct = (resolved/total)*100;
+        html += `
+          <div class="fixture-summary" data-fixture-id="${fx.id}" style="cursor:pointer; ${fx.closed ? 'opacity:0.5;' : ''}">
+            <div class="fs-top" style="align-items:center;">
+              <span class="fs-title">${escapeHtml(fx.label)}${fx.closed ? ' <span style="color:var(--muted-dim); font-size:10.5px; font-family:\'JetBrains Mono\',monospace; text-transform:uppercase; letter-spacing:0.05em;">· Closed</span>' : ''}</span>
+              <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+                <span class="fs-time">${fx.venue ? escapeHtml(fx.venue)+' · ' : ''}${fx.kickoff ? 'KO '+escapeHtml(fx.kickoff) : ''}</span>
+                <button class="resolve-btn close-fixture-btn ${fx.closed?'done':''}" data-id="${fx.id}">${fx.closed ? 'Reopen' : 'Close'}</button>
+              </div>
+            </div>
+            <div class="fs-bar-track">
+              <div class="fs-bar-seg" style="width:${openPct}%; background:${critical>0?'var(--red)':'var(--amber)'}"></div>
+              <div class="fs-bar-seg" style="width:${resPct}%; background:var(--signal)"></div>
+            </div>
+            <div class="fs-counts">
+              <span>ENTRIES <b>${fEntries.length}</b></span>
+              <span>OPEN <b style="color:${open>0?'var(--red)':'var(--muted)'}">${open}</b></span>
+              <span>RESOLVED <b style="color:var(--signal)">${resolved}</b></span>
+            </div>
+          </div>
+        `;
+      });
+      html += `</div></div>`;
+    });
+
+    list.innerHTML = html;
+
+    $$('.date-folder-header', list).forEach(header => {
+      header.onclick = () => {
+        const folder = header.closest('.date-folder');
+        const key = folder.dataset.dateKey;
+        if(expandedDateFolders.has(key)) expandedDateFolders.delete(key);
+        else expandedDateFolders.add(key);
+        renderReview();
+      };
+    });
+
+    $$('.close-fixture-btn', list).forEach(btn => {
+      btn.onclick = async (e) => {
+        e.stopPropagation();
+        const fx = fixtures.find(f => f.id === btn.dataset.id);
+        if(!fx) return;
+        fx.closed = !fx.closed;
+        await persist(saveFixtures, 'fixture');
+        renderReview();
+      };
+    });
+    $$('.fixture-summary', list).forEach(card => {
+      card.onclick = () => {
+        selectedFixtureId = card.dataset.fixtureId;
+        selectedCat = null;
+        selectedService = null;
+        selectedTeam = null;
+        $('#clientFacingCheck').checked = false;
+        switchTab('capture');
+      };
+    });
+  }
+
+  // ---------- CLIENTS TAB ----------
+  const leagueSelect = $('#clientLeagueInput');
+  const clubSelectWrap = $('#clubSelectWrap');
+  const clubSelect = $('#clientClubSelect');
+  const clubLoadingMsg = $('#clubLoadingMsg');
+  const clientNameWrap = $('#clientNameWrap');
+  const clientNameInput = $('#clientNameInput');
+  const clientVenueInput = $('#clientVenueInput');
+  let currentLeagueClubs = [];
+
+  async function loadClubsForCurrentLeague(forceRefresh){
+    const league = leagueSelect.value;
+    if(!league || league === 'Other'){
+      clubSelectWrap.style.display = 'none';
+      clientNameWrap.style.display = '';
+      return;
+    }
+    clubSelectWrap.style.display = 'none';
+    clientNameWrap.style.display = 'none';
+    clubLoadingMsg.style.display = '';
+    clubLoadingMsg.textContent = `Loading ${league} clubs...`;
+    try{
+      const result = await getClubsForLeague(league, forceRefresh);
+      currentLeagueClubs = result.clubs;
+      clubSelect.innerHTML = '<option value="">Select club...</option>' +
+        currentLeagueClubs.slice().sort((a,b)=>a.name.localeCompare(b.name))
+          .map((c,i) => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`).join('') +
+        `<option value="__custom__">Other / not listed</option>`;
+      clubSelectWrap.style.display = '';
+      clubLoadingMsg.style.display = 'none';
+    }catch(e){
+      clubLoadingMsg.textContent = `Couldn't load the ${league} club list (${e.message || 'error'}). Enter the club manually below, or try again.`;
+      clientNameWrap.style.display = '';
+    }
+  }
+
+  leagueSelect.addEventListener('change', () => loadClubsForCurrentLeague(false));
+  $('#refreshClubsBtn').addEventListener('click', () => loadClubsForCurrentLeague(true));
+
+  clubSelect.addEventListener('change', () => {
+    if(clubSelect.value === '__custom__'){
+      clientNameWrap.style.display = '';
+      clientNameInput.value = '';
+      clientNameInput.focus();
+    } else if(clubSelect.value){
+      clientNameWrap.style.display = 'none';
+      clientNameInput.value = clubSelect.value;
+      const club = currentLeagueClubs.find(c => c.name === clubSelect.value);
+      if(club && club.venue) clientVenueInput.value = club.venue;
+    }
+  });
+
+  let selectedClientType = null;
+  let selectedClientServices = [];
+
+  $('#clientTypeRow').addEventListener('click', (e) => {
+    const btn = e.target.closest('.sev-btn');
+    if(!btn) return;
+    selectedClientType = btn.dataset.type;
+    $$('.sev-btn', $('#clientTypeRow')).forEach(b => b.classList.toggle('selected', b===btn));
+  });
+
+  $('#clientServicesGrid').addEventListener('click', (e) => {
+    const btn = e.target.closest('.cat-btn');
+    if(!btn) return;
+    const service = btn.dataset.service;
+    const idx = selectedClientServices.indexOf(service);
+    if(idx === -1){ selectedClientServices.push(service); btn.classList.add('selected'); }
+    else { selectedClientServices.splice(idx, 1); btn.classList.remove('selected'); }
+  });
+
+  $('#addClientBtn').addEventListener('click', async () => {
+    const nameEl = $('#clientNameInput');
+    const venueEl = $('#clientVenueInput');
+    const league = leagueSelect.value;
+    const name = nameEl.value.trim();
+    const venue = venueEl.value.trim();
+    if(!name){ nameEl.focus(); return; }
+    clients.push({ id: uid(), name, venue, league, type: selectedClientType, services: selectedClientServices.slice() });
+    await persist(saveClients, 'client');
+    nameEl.value = '';
+    venueEl.value = '';
+    clubSelect.value = '';
+    selectedClientType = null;
+    selectedClientServices = [];
+    $$('.sev-btn', $('#clientTypeRow')).forEach(b => b.classList.remove('selected'));
+    $$('.cat-btn', $('#clientServicesGrid')).forEach(b => b.classList.remove('selected'));
+    renderClients();
+  });
+
+  function renderClients(){
+    const list = $('#clientsList');
+    if(!clients.length){
+      list.innerHTML = `<div class="empty">No clients saved yet.<br>Add one above to speed up fixture creation.</div>`;
+      return;
+    }
+    const sorted = clients.slice().sort((a,b) => a.name.localeCompare(b.name));
+    list.innerHTML = sorted.map(c => {
+      const services = (c.services && c.services.length) ? c.services.join(' · ') : '';
+      return `
+      <div class="fixture-summary" data-id="${c.id}" style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+        <div>
+          <div class="fs-title">${escapeHtml(c.name)}</div>
+          <div class="fs-time" style="margin-top:3px;">${c.league ? escapeHtml(c.league) : ''}${c.league && c.venue ? ' · ' : ''}${c.venue ? escapeHtml(c.venue) : ''}</div>
+          <div class="fs-time" style="margin-top:3px;">${c.type ? `<span style="color:var(--brand);">${escapeHtml(c.type)}</span>` : ''}${c.type && services ? ' · ' : ''}${escapeHtml(services)}</div>
+        </div>
+        <div style="display:flex; gap:6px; flex-shrink:0;">
+          <button class="resolve-btn edit-btn" data-id="${c.id}" style="border-color:var(--blue); color:var(--blue);">Edit</button>
+          <button class="resolve-btn remove-btn" data-id="${c.id}">Remove</button>
+        </div>
+      </div>
+    `;
+    }).join('');
+    $$('.edit-btn', list).forEach(btn => {
+      btn.onclick = () => showEditClientModal(btn.dataset.id);
+    });
+    $$('.remove-btn', list).forEach(btn => {
+      btn.onclick = async () => {
+        clients = clients.filter(c => c.id !== btn.dataset.id);
+        await persist(saveClients, 'client list');
+        renderClients();
+      };
+    });
+  }
+
+  // ---------- PROXY URL SETTINGS ----------
+  async function refreshProxyUrlStatus(){
+    const url = await getProxyUrl();
+    $('#proxyUrlStatus').textContent = url ? '(proxy set)' : '(not set — direct calls likely blocked by CORS outside claude.ai)';
+  }
+
+  $('#saveProxyUrlBtn').addEventListener('click', async () => {
+    const input = $('#proxyUrlInput');
+    const val = normalizeProxyUrl(input.value);
+    if(!val) return;
+    try{
+      await window.storage.set(PROXY_URL_STORAGE_KEY, val, false);
+      cachedProxyUrl = val;
+      input.value = '';
+      await refreshProxyUrlStatus();
+    }catch(e){
+      alert('Could not save the proxy URL: ' + (e.message || 'unknown error'));
+    }
+  });
+
+  $('#clearProxyUrlBtn').addEventListener('click', async () => {
+    try{
+      await window.storage.delete(PROXY_URL_STORAGE_KEY, false);
+    }catch(e){ /* fine if it never existed */ }
+    cachedProxyUrl = '';
+    $('#proxyUrlInput').value = '';
+    await refreshProxyUrlStatus();
+  });
+
+  // ---------- DELETE PASSWORD SETTINGS ----------
+  async function refreshDeletePasswordStatus(){
+    const pass = await getDeletePassword();
+    $('#deletePasswordStatus').textContent = pass ? '(password set)' : '(not set)';
+  }
+
+  $('#saveDeletePasswordBtn').addEventListener('click', async () => {
+    const input = $('#deletePasswordInput');
+    const val = input.value.trim();
+    if(!val) return;
+    try{
+      await window.storage.set(DELETE_PASSWORD_STORAGE_KEY, val, false);
+      cachedDeletePassword = val;
+      input.value = '';
+      await refreshDeletePasswordStatus();
+    }catch(e){
+      alert('Could not save the password: ' + (e.message || 'unknown error'));
+    }
+  });
+
+  $('#clearDeletePasswordBtn').addEventListener('click', async () => {
+    try{
+      await window.storage.delete(DELETE_PASSWORD_STORAGE_KEY, false);
+    }catch(e){ /* fine if it never existed */ }
+    cachedDeletePassword = '';
+    $('#deletePasswordInput').value = '';
+    await refreshDeletePasswordStatus();
+  });
+
+  // ---------- BACKUP / EXPORT / IMPORT ----------
+  $('#exportBtn').addEventListener('click', () => {
+    const payload = { fixtures, entries, clients, exportedAt: new Date().toISOString() };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0,10);
+    a.href = url;
+    a.download = `matchday-log-backup-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  $('#importBtn').addEventListener('click', () => $('#importFile').click());
+
+  $('#importFile').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if(!file) return;
+    try{
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if(!parsed.fixtures || !parsed.entries || !parsed.clients){
+        throw new Error('File does not look like a matchday log backup');
+      }
+      const proceed = confirm(`This will replace your current data with the backup from ${parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleString() : 'this file'}. Continue?`);
+      if(!proceed){ e.target.value = ''; return; }
+      fixtures = parsed.fixtures;
+      entries = parsed.entries;
+      clients = parsed.clients;
+      selectedFixtureId = fixtures.length ? fixtures[fixtures.length-1].id : null;
+      await persist(saveFixtures, 'fixtures');
+      await persist(saveEntries, 'entries');
+      await persist(saveClients, 'clients');
+      renderAll();
+      renderClients();
+      alert('Backup restored.');
+    }catch(err){
+      alert('Could not import this file: ' + (err.message || 'unknown error'));
+    }
+    e.target.value = '';
+  });
+
+  // ---------- STATS / TICKER ----------
+  function renderTicker(){
+    $('#statFixtures').textContent = fixtures.length;
+    $('#statOpen').textContent = entries.filter(e => !e.resolved).length;
+    $('#statResolved').textContent = entries.filter(e => e.resolved).length;
+  }
+
+  // ---------- TABS ----------
+  $('#reviewNewFixtureBtn').addEventListener('click', showNewFixtureModal);
+
+  $('#refreshFixturesBtn').addEventListener('click', async () => {
+    const btn = $('#refreshFixturesBtn');
+    const statusEl = $('#refreshFixturesStatus');
+    const todayStr = new Date().toISOString().slice(0,10);
+    const noLeague = clients.filter(c => !c.league);
+    const candidates = clients.filter(c => c.league);
+    if(!candidates.length){
+      statusEl.style.display = '';
+      statusEl.innerHTML = noLeague.length
+        ? `No clients have a league set. Edit these on the Clients tab first: ${noLeague.map(c=>escapeHtml(c.name)).join(', ')}`
+        : 'No clients yet — add one on the Clients tab first.';
+      return;
+    }
+    btn.disabled = true;
+    statusEl.style.display = '';
+    let added = 0, skipped = 0, requestsUsed = 0;
+    const failures = [];
+    let clientIdsUpdated = false;
+    for(let i=0; i<candidates.length; i++){
+      const client = candidates[i];
+      const existingUpcoming = fixtures.filter(f =>
+        (f.home||'').toLowerCase() === client.name.toLowerCase() &&
+        (!f.matchDate || f.matchDate >= todayStr)
+      );
+      const needed = Math.max(0, 2 - existingUpcoming.length);
+      if(needed === 0){ skipped++; continue; }
+      statusEl.textContent = `Checking ${client.name} (${i+1}/${candidates.length})...`;
+      try{
+        const results = await lookupUpcomingFixtures(client.name, client.venue, client.league, client, needed);
+        if(results.some(r => r.teamId)) clientIdsUpdated = true;
+        // Dedupe on home+matchDate only, not opponent name — a club can't play two
+        // different home league fixtures on the same day, and different lookup sources
+        // (API-Sports vs AI web-search) don't always spell the opponent the same way
+        // (e.g. "Coventry" vs "Coventry City"), which used to slip past a name-based key.
+        const existingDates = new Set(existingUpcoming.map(f => f.matchDate));
+        let addedForThisClient = 0;
+        let alreadyHadForThisClient = 0;
+        results.forEach(result => {
+          if(!result.match_date) return;
+          if(existingDates.has(result.match_date)){ alreadyHadForThisClient++; return; }
+          const label = `${client.name} v ${result.opponent || '?'}`;
+          fixtures.push({
+            id: uid(), label, home: client.name, away: result.opponent || '',
+            venue: result.venue || client.venue || '', kickoff: result.kickoff_time || '',
+            matchDate: result.match_date, closed: false, createdAt: new Date().toISOString()
+          });
+          existingDates.add(result.match_date);
+          added++;
+          addedForThisClient++;
+        });
+        if(addedForThisClient === 0 && alreadyHadForThisClient > 0){
+          skipped++;
+        } else if(addedForThisClient === 0){
+          failures.push(`${client.name}: no confident match found`);
+        }
+      }catch(e){
+        failures.push(`${client.name}: ${e.message || 'lookup failed'}`);
+      }
+    }
+    if(clientIdsUpdated){
+      await persist(saveClients, 'clients');
+    }
+    if(added){
+      if(fixtures.length) selectedFixtureId = selectedFixtureId || fixtures[fixtures.length-1].id;
+      await persist(saveFixtures, 'fixtures');
+    }
+    let summary = `Added ${added} fixture${added===1?'':'s'} · ${skipped} already up to date · ${failures.length} failed.`;
+    if(noLeague.length){
+      summary += ` Skipped (no league set): ${noLeague.map(c=>escapeHtml(c.name)).join(', ')}.`;
+    }
+    if(failures.length){
+      summary += `<br><br>` + failures.map(f => escapeHtml(f)).join('<br>');
+    }
+    statusEl.innerHTML = summary;
+    btn.disabled = false;
+    renderReview();
+  });
+
+  function switchTab(tabName){
+    if(tabName !== 'capture') stopDictation();
+    activeTab = tabName;
+    $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab===tabName));
+    $('#tab-capture').style.display = tabName==='capture' ? '' : 'none';
+    $('#tab-log').style.display = tabName==='log' ? '' : 'none';
+    $('#tab-review').style.display = tabName==='review' ? '' : 'none';
+    $('#tab-clients').style.display = tabName==='clients' ? '' : 'none';
+    $('#tab-admin').style.display = tabName==='admin' ? '' : 'none';
+    if(tabName==='capture'){ renderLoggingForBanner(); renderCaptureState(); }
+    if(tabName==='log') renderLog();
+    if(tabName==='review') renderReview();
+    if(tabName==='clients') renderClients();
+    if(tabName==='admin'){ refreshDeletePasswordStatus(); refreshProxyUrlStatus(); }
+  }
+
+  $$('.tab').forEach(tab => {
+    tab.onclick = () => switchTab(tab.dataset.tab);
+  });
+
+  // ---------- CLOCK ----------
+  function tickClock(){
+    $('#clock').textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  }
+  setInterval(tickClock, 1000);
+  tickClock();
+
+  function renderAll(){
+    renderLoggingForBanner();
+    renderCaptureState();
+    renderTicker();
+    if(activeTab==='log') renderLog();
+    if(activeTab==='review') renderReview();
+  }
+
+  (async function init(){
+    await loadData();
+    renderAll();
+    refreshDeletePasswordStatus();
+    refreshProxyUrlStatus();
+    initDictation();
+  })();
+})();
+</script>
+</body>
+</html>
