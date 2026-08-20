@@ -8,3 +8,8 @@ matchday-log-backup-*.json
 # which git now versions going forward. Kept on disk for reference, not published.
 matchday-log.html
 matchday-log (1).html
+
+# Wrangler (Cloudflare Workers CLI) local state — never contains the secret itself
+# (that's stored in Cloudflare, not here), but no reason to track it either
+.wrangler/
+node_modules/
