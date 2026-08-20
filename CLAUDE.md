@@ -6,17 +6,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Matchday Log** is a single-file HTML/CSS/JS web app (no build step, no dependencies, no package.json) for logging and tracking operational issues ("entries") at football matchday events — e.g. big screen / digiBOARD / digiRIBBON faults during a live game. It's built to run as a Claude artifact (using `window.storage`) but also stands alone in a plain browser via a `localStorage` polyfill.
 
-There is no git repo, no test suite, and no build/lint tooling. "Development" is: edit the HTML file, open it in a browser, reload.
+This is a git repo (public on GitHub, deployed via GitHub Pages) but there's still no test suite and no build/lint tooling. "Development" is: edit `index.html`, open it in a browser, reload.
 
 ## File layout
 
-- `matchday-log (2).html` — **the current/canonical copy.** All three `matchday-log*.html` files are timestamped snapshots of the same evolving artifact (re-downloaded copies), not separate components — `(2)` is newest and has the most complete logic (e.g. `refreshFixturesBtn` fetches up to 2 upcoming fixtures per client per run; older copies fetch only 1). When asked to "fix the app" or make changes, edit `matchday-log (2).html` and check whether the user wants the older duplicates deleted/reconciled — don't silently fork behavior across copies.
-- `matchday-log-backup-2026-08-18.json` — a data export (see Data model below), useful as a real-world fixture/entries sample.
-- `Claude Setup.exe`, `Git-2.55.0.4-64-bit.exe` — installers, unrelated to the app.
+- `index.html` — **the app.** This is the file GitHub Pages serves at the site root, and the one to edit for any change. It was renamed from a Claude-artifact-style timestamped filename (`matchday-log (2).html`) once this became a real git repo — git history is now the versioning mechanism, not re-downloaded snapshot copies.
+- `cloudflare-worker.js` — the CORS proxy for API-Sports the Admin tab refers to (see Architecture below). Deploy it to Cloudflare Workers and paste the resulting URL into the Admin tab's Proxy URL field.
+- `.gitignore` excludes, deliberately: the two superseded pre-git snapshot copies (`matchday-log.html`, `matchday-log (1).html`, still present locally but untracked), `matchday-log-backup-*.json` exports (real club/venue/fixture data — not for a public repo), and the unrelated `*.exe` installers.
 
 ## Running it
 
-Just open the HTML file in a browser (double-click, or drag into a tab). No server, build, or install step. Outside claude.ai it uses `localStorage` in place of the artifact `window.storage` API (see polyfill at the top of the `<script>` block) — data is per-browser-profile only.
+**Locally:** just open `index.html` in a browser (double-click, or drag into a tab). No server, build, or install step. Outside claude.ai it uses `localStorage` in place of the artifact `window.storage` API (see polyfill at the top of the `<script>` block) — data is per-browser-profile only.
+
+**On GitHub Pages:** same behavior — it's a static file, `window.storage` still doesn't exist there so the `localStorage` polyfill kicks in, meaning data is scoped per-device/per-browser, not synced between them. This is also the way to get a working Dictate button (Web Speech API needs a secure context — `https://` — which a local `file://` open doesn't reliably provide).
 
 ## Architecture
 
