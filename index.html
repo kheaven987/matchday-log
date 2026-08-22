@@ -425,6 +425,15 @@
           </span>
           <textarea id="noteInput" placeholder="What happened..."></textarea>
         </div>
+        <div>
+          <span class="field-label">Photo <span style="text-transform:none; letter-spacing:0; color:var(--muted-dim);">(optional)</span></span>
+          <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none;" />
+          <div id="photoPreviewWrap" style="display:none; position:relative; margin-bottom:8px;">
+            <img id="photoPreviewImg" style="max-width:100%; max-height:180px; border-radius:8px; display:block;" />
+            <button type="button" id="removePhotoBtn" style="position:absolute; top:6px; right:6px; background:rgba(22,22,26,0.85); color:var(--red); border:1px solid var(--red); border-radius:20px; width:26px; height:26px; cursor:pointer; font-size:14px; line-height:1;">✕</button>
+          </div>
+          <button type="button" class="ghost-btn" id="addPhotoBtn" style="border-color:var(--blue); color:var(--blue);">📷 Add photo</button>
+        </div>
         <button class="submit-btn" id="submitEntry" disabled>Log entry</button>
       </div>
     </div>
@@ -443,6 +452,8 @@
       <div class="filter-chip" data-filter="Content Issue">Content Issue</div>
       <div class="filter-chip" data-filter="clientFacing">Client Facing</div>
     </div>
+    <input id="logSearchInput" type="text" placeholder="Search notes or fixtures..." style="margin-bottom:12px;" autocomplete="off" />
+    <div id="recurringIssuesCard"></div>
     <div id="logList"></div>
   </div>
 
@@ -627,13 +638,41 @@
   let selectedTeams = [];
   let selectedService = null;
   let selectedSev = 'minor';
+  let pendingPhotoDataUrl = null;
   let activeFilter = 'all';
+  let logSearchQuery = '';
   let activeTab = 'review';
 
   const $ = (sel, el=document) => el.querySelector(sel);
   const $$ = (sel, el=document) => Array.from(el.querySelectorAll(sel));
 
   function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+  // Resizes/compresses a photo before it's stored — a raw phone photo can be
+  // several MB, which would balloon localStorage and the sync payload fast.
+  // Downscales to maxDim on the longest edge and re-encodes as JPEG.
+  function compressImageFile(file, maxDim, quality){
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          let { width, height } = img;
+          if(width > height && width > maxDim){ height = Math.round(height * maxDim / width); width = maxDim; }
+          else if(height >= width && height > maxDim){ width = Math.round(width * maxDim / height); height = maxDim; }
+          const canvas = document.createElement('canvas');
+          canvas.width = width; canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = () => reject(new Error('could not read that image'));
+        img.src = reader.result;
+      };
+      reader.onerror = () => reject(new Error('could not read that file'));
+      reader.readAsDataURL(file);
+    });
+  }
 
   async function loadData(){
     // If cross-device sync is configured, the cloud copy is treated as the
@@ -798,6 +837,28 @@
       cachedDeletePassword = '';
     }
     return cachedDeletePassword;
+  }
+
+  // Shared "enter/create delete password" gate, used for both entry and
+  // fixture deletion. Returns true if authorized to proceed.
+  async function checkDeletePassword(){
+    const stored = await getDeletePassword();
+    if(!stored){
+      const newPass = prompt('No delete password is set yet. Create one now — it will be required for all future deletions:');
+      if(!newPass) return false;
+      try{
+        await window.storage.set(DELETE_PASSWORD_STORAGE_KEY, newPass, false);
+        cachedDeletePassword = newPass;
+        return true;
+      }catch(err){
+        alert('Could not save the password: ' + (err.message || 'unknown error'));
+        return false;
+      }
+    }
+    const entered = prompt('Enter the delete password to continue:');
+    if(entered === null) return false;
+    if(entered !== stored){ alert('Incorrect password.'); return false; }
+    return true;
   }
 
   const REPORT_RECIPIENT_STORAGE_KEY = 'md-report-recipient';
@@ -1607,13 +1668,97 @@
     };
   }
 
+  function showEditFixtureModal(fixtureId){
+    const fx = fixtures.find(f => f.id === fixtureId);
+    if(!fx) return;
+    const entryCount = entries.filter(e => e.fixtureId === fx.id).length;
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    backdrop.innerHTML = `
+      <div class="modal">
+        <h2>Edit fixture</h2>
+        <div class="stack">
+          <div>
+            <span class="field-label">Home club</span>
+            <input id="editFxHomeInput" />
+          </div>
+          <div>
+            <span class="field-label">Opponent</span>
+            <input id="editFxAwayInput" />
+          </div>
+          <div class="row2">
+            <div>
+              <span class="field-label">Date</span>
+              <input id="editFxDateInput" type="date" />
+            </div>
+            <div>
+              <span class="field-label">Kick-off</span>
+              <input id="editFxKoInput" type="time" />
+            </div>
+          </div>
+          <div>
+            <span class="field-label">Venue</span>
+            <input id="editFxVenueInput" />
+          </div>
+          <button class="submit-btn" id="saveEditFixtureBtn">Save changes</button>
+          <button class="ghost-btn" id="deleteFixtureBtn" style="border-color:var(--red); color:var(--red);">Delete fixture${entryCount ? ` (${entryCount} logged ${entryCount===1?'issue':'issues'})` : ''}</button>
+          <button class="ghost-btn" id="cancelEditFixtureBtn">Cancel</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(backdrop);
+    backdrop.onclick = (e) => { if(e.target===backdrop) backdrop.remove(); };
+    $('#cancelEditFixtureBtn', backdrop).onclick = () => backdrop.remove();
+
+    $('#editFxHomeInput', backdrop).value = fx.home || '';
+    $('#editFxAwayInput', backdrop).value = fx.away || '';
+    $('#editFxDateInput', backdrop).value = fx.matchDate || '';
+    $('#editFxKoInput', backdrop).value = fx.kickoff || '';
+    $('#editFxVenueInput', backdrop).value = fx.venue || '';
+
+    $('#saveEditFixtureBtn', backdrop).onclick = async () => {
+      const home = $('#editFxHomeInput', backdrop).value.trim();
+      const away = $('#editFxAwayInput', backdrop).value.trim();
+      if(!home && !away){ $('#editFxHomeInput', backdrop).focus(); return; }
+      fx.home = home;
+      fx.away = away;
+      fx.label = home && away ? `${home} v ${away}` : (home || away);
+      fx.matchDate = $('#editFxDateInput', backdrop).value;
+      fx.kickoff = $('#editFxKoInput', backdrop).value;
+      fx.venue = $('#editFxVenueInput', backdrop).value.trim();
+      await persist(saveFixtures, 'fixture');
+      backdrop.remove();
+      renderReview();
+    };
+
+    $('#deleteFixtureBtn', backdrop).onclick = async () => {
+      const proceed = confirm(
+        entryCount
+          ? `Delete "${fx.label}"? This fixture has ${entryCount} logged ${entryCount===1?'issue':'issues'} against it — those entries will stay in the Log tab but will show as "Unknown fixture". This can't be undone.`
+          : `Delete "${fx.label}"? This can't be undone.`
+      );
+      if(!proceed) return;
+      if(!(await checkDeletePassword())) return;
+      fixtures = fixtures.filter(f => f.id !== fx.id);
+      if(selectedFixtureId === fx.id) selectedFixtureId = fixtures.length ? fixtures[fixtures.length-1].id : null;
+      await persist(saveFixtures, 'fixture');
+      backdrop.remove();
+      renderAll();
+      if(activeTab==='review') renderReview();
+    };
+  }
+
   // ---------- CAPTURE TAB ----------
-  function getServiceOptionsForCurrentFixture(){
-    const fx = fixtures.find(f => f.id === selectedFixtureId);
+  function getServiceOptionsForFixtureId(fixtureId){
+    const fx = fixtures.find(f => f.id === fixtureId);
     if(!fx) return ALL_SERVICES;
     const client = clients.find(c => (c.name||'').toLowerCase() === (fx.home||'').toLowerCase());
     if(client && client.services && client.services.length) return client.services;
     return ALL_SERVICES;
+  }
+
+  function getServiceOptionsForCurrentFixture(){
+    return getServiceOptionsForFixtureId(selectedFixtureId);
   }
 
   function renderServiceGrid(){
@@ -1741,6 +1886,32 @@
     btn.onclick = () => { isDictating ? stopDictation() : startDictation(); };
   }
 
+  $('#addPhotoBtn').addEventListener('click', () => $('#photoInput').click());
+
+  $('#photoInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    e.target.value = ''; // allow picking the same file again later
+    if(!file) return;
+    const btn = $('#addPhotoBtn');
+    btn.disabled = true;
+    btn.textContent = 'Processing photo...';
+    try{
+      pendingPhotoDataUrl = await compressImageFile(file, 1000, 0.65);
+      $('#photoPreviewImg').src = pendingPhotoDataUrl;
+      $('#photoPreviewWrap').style.display = '';
+    }catch(err){
+      alert('Could not use that photo: ' + (err.message || 'unknown error'));
+    }
+    btn.disabled = false;
+    btn.textContent = '📷 Add photo';
+  });
+
+  $('#removePhotoBtn').addEventListener('click', () => {
+    pendingPhotoDataUrl = null;
+    $('#photoPreviewWrap').style.display = 'none';
+    $('#photoPreviewImg').src = '';
+  });
+
   $('#submitEntry').addEventListener('click', async () => {
     const note = $('#noteInput').value.trim();
     if(!selectedFixtureId || !selectedCat || !selectedService || !selectedTeams.length || !note) return;
@@ -1753,6 +1924,7 @@
       severity: selectedSev,
       clientFacing: $('#clientFacingCheck').checked,
       note,
+      photo: pendingPhotoDataUrl || null,
       resolved: false,
       timestamp: new Date().toISOString()
     };
@@ -1765,6 +1937,9 @@
     selectedService = null;
     selectedTeams = [];
     selectedSev = 'minor';
+    pendingPhotoDataUrl = null;
+    $('#photoPreviewWrap').style.display = 'none';
+    $('#photoPreviewImg').src = '';
     renderAll();
     $('#submitEntry').textContent = 'Logged ✓';
     setTimeout(() => { $('#submitEntry').textContent = 'Log entry'; }, 900);
@@ -1778,6 +1953,40 @@
     renderLog();
   });
 
+  $('#logSearchInput').addEventListener('input', (e) => {
+    logSearchQuery = e.target.value;
+    renderLog();
+  });
+
+  // Groups all entries by client + category + service and surfaces combos that
+  // have come up 2+ times — a lightweight way to spot recurring root causes
+  // (e.g. the same club having repeated digiRIBBON setup issues) without
+  // needing any fuzzy text matching on notes.
+  function renderRecurringIssues(){
+    const el = $('#recurringIssuesCard');
+    if(!el) return;
+    const tally = {};
+    entries.forEach(e => {
+      const fx = fixtures.find(f => f.id === e.fixtureId);
+      const client = fx ? fx.home : 'Unknown';
+      const key = `${client}|||${e.category}|||${e.service||''}`;
+      if(!tally[key]) tally[key] = { client, category: e.category, service: e.service||'', count: 0 };
+      tally[key].count++;
+    });
+    const recurring = Object.values(tally).filter(t => t.count >= 2).sort((a,b) => b.count - a.count).slice(0, 5);
+    if(!recurring.length){ el.innerHTML = ''; return; }
+    el.innerHTML = `
+      <div class="card" style="padding:12px 14px; margin-bottom:12px;">
+        <div style="font-family:'Oswald', sans-serif; font-size:11.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--amber); margin-bottom:8px;">⚠ Recurring issues</div>
+        ${recurring.map(r => `
+          <div style="font-size:12.5px; color:var(--text); margin-bottom:4px;">
+            <b style="color:var(--amber);">${r.count}×</b> ${escapeHtml(r.category)}${r.service ? ' · '+escapeHtml(r.service) : ''} <span style="color:var(--muted);">— ${escapeHtml(r.client)}</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
   function escapeHtml(s){
     return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
@@ -1789,14 +1998,27 @@
 
   function renderLog(){
     $$('.filter-chip').forEach(c => c.classList.toggle('active', c.dataset.filter===activeFilter));
+    renderRecurringIssues();
     const list = $('#logList');
     let items = entries.slice().sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
     if(activeFilter==='open') items = items.filter(e => !e.resolved);
     else if(activeFilter==='clientFacing') items = items.filter(e => e.clientFacing);
     else if(activeFilter!=='all') items = items.filter(e => e.category===activeFilter);
 
+    const query = logSearchQuery.trim().toLowerCase();
+    if(query){
+      items = items.filter(e =>
+        (e.note||'').toLowerCase().includes(query) ||
+        fixtureLabel(e.fixtureId).toLowerCase().includes(query) ||
+        (e.team||'').toLowerCase().includes(query) ||
+        (e.service||'').toLowerCase().includes(query)
+      );
+    }
+
     if(!items.length){
-      list.innerHTML = `<div class="empty">No entries yet.<br>Tap into a fixture on the Fixtures tab to log one.</div>`;
+      list.innerHTML = entries.length
+        ? `<div class="empty">Nothing matches${query ? ` "${escapeHtml(logSearchQuery.trim())}"` : ' this filter'}.</div>`
+        : `<div class="empty">No entries yet.<br>Tap into a fixture on the Fixtures tab to log one.</div>`;
       return;
     }
 
@@ -1817,7 +2039,7 @@
             </div>
             <button class="resolve-btn ${e.resolved?'done':''}" data-id="${e.id}">${e.resolved?'Resolved':'Resolve'}</button>
           </div>
-          <div class="entry-fixture" style="margin-bottom:5px;">${escapeHtml(fixtureLabel(e.fixtureId))}${e.team ? ' · <span style="color:var(--amber);">' + escapeHtml(e.team) + '</span>' : ''}${e.clientFacing ? ' · <span style="color:var(--red);">Client facing</span>' : ''}</div>
+          <div class="entry-fixture" style="margin-bottom:5px;">${escapeHtml(fixtureLabel(e.fixtureId))}${e.team ? ' · <span style="color:var(--amber);">' + escapeHtml(e.team) + '</span>' : ''}${e.clientFacing ? ' · <span style="color:var(--red);">Client facing</span>' : ''}${e.photo ? ' · 📷' : ''}</div>
           <div class="entry-note ${e.resolved?'resolved-text':''}">${escapeHtml(e.note)}</div>
         </div>
       `;
@@ -1889,11 +2111,17 @@
             <span class="field-label">Note</span>
             <div style="white-space:pre-wrap; line-height:1.5;">${escapeHtml(e.note)}</div>
           </div>
+          ${e.photo ? `
+          <div>
+            <span class="field-label">Photo</span>
+            <img src="${e.photo}" style="max-width:100%; border-radius:8px; display:block;" />
+          </div>` : ''}
           <div>
             <span class="field-label">Status</span>
             <div style="color:${e.resolved ? 'var(--signal)' : 'var(--red)'};">${e.resolved ? 'Resolved' : 'Open'}</div>
           </div>
           <button class="submit-btn" id="toggleResolveInModal" style="${e.resolved ? 'background:var(--muted-dim);' : ''}">${e.resolved ? 'Reopen' : 'Mark resolved'}</button>
+          <button class="ghost-btn" id="editEntryBtn" style="border-color:var(--blue); color:var(--blue);">✏️ Edit issue</button>
           <button class="ghost-btn" id="deleteEntryBtn" style="border-color:var(--red); color:var(--red);">Delete entry</button>
           <button class="ghost-btn" id="closeEntryModalBtn">Close</button>
         </div>
@@ -1908,24 +2136,172 @@
       backdrop.remove();
       renderAll();
     };
+    $('#editEntryBtn', backdrop).onclick = () => {
+      backdrop.remove();
+      showEditEntryModal(e.id);
+    };
     $('#deleteEntryBtn', backdrop).onclick = async () => {
-      const stored = await getDeletePassword();
-      if(!stored){
-        const newPass = prompt('No delete password is set yet. Create one now — it will be required for all future deletions:');
-        if(!newPass) return;
-        try{
-          await window.storage.set(DELETE_PASSWORD_STORAGE_KEY, newPass, false);
-          cachedDeletePassword = newPass;
-        }catch(err){
-          alert('Could not save the password: ' + (err.message || 'unknown error'));
-          return;
-        }
-      } else {
-        const entered = prompt('Enter the delete password to remove this entry:');
-        if(entered === null) return;
-        if(entered !== stored){ alert('Incorrect password.'); return; }
-      }
+      if(!(await checkDeletePassword())) return;
       entries = entries.filter(x => x.id !== e.id);
+      await persist(saveEntries, 'entry');
+      backdrop.remove();
+      renderAll();
+      if(activeTab==='log') renderLog();
+    };
+  }
+
+  function showEditEntryModal(entryId){
+    const entry = entries.find(x => x.id === entryId);
+    if(!entry) return;
+    const serviceOptions = getServiceOptionsForFixtureId(entry.fixtureId);
+    const teamOptions = ["Tech Ops","Producers","Engineering","Client Service","Edit","Co-ordinators"];
+    let editSelectedTeams = (entry.team || '').split(',').map(t => t.trim()).filter(Boolean);
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    backdrop.innerHTML = `
+      <div class="modal">
+        <h2>Edit issue</h2>
+        <div class="stack">
+          <div>
+            <span class="field-label">Fixture</span>
+            <div style="font-family:'Oswald', sans-serif; font-weight:600; font-size:16px;">${escapeHtml(fixtureLabel(entry.fixtureId))}</div>
+          </div>
+          <div>
+            <span class="field-label">Category</span>
+            <div class="cat-grid" id="editEntryCatGrid">
+              ${CATS.map(c => `<button type="button" class="cat-btn" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('')}
+            </div>
+          </div>
+          <div>
+            <span class="field-label">Service</span>
+            <div class="cat-grid" id="editEntryServiceGrid">
+              ${serviceOptions.map(s => `<button type="button" class="cat-btn" data-service="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join('')}
+            </div>
+          </div>
+          <div>
+            <span class="field-label">Responsible team(s)</span>
+            <div class="cat-grid" id="editEntryTeamGrid">
+              ${teamOptions.map(t => `<button type="button" class="cat-btn" data-team="${escapeHtml(t)}">${escapeHtml(t)}</button>`).join('')}
+            </div>
+          </div>
+          <div>
+            <span class="field-label">Severity</span>
+            <div class="sev-row" id="editEntrySevRow">
+              <div class="sev-btn" data-sev="minor">Minor</div>
+              <div class="sev-btn" data-sev="moderate">Moderate</div>
+              <div class="sev-btn" data-sev="major">Major</div>
+            </div>
+          </div>
+          <div>
+            <label style="display:flex; align-items:center; gap:9px; cursor:pointer; padding:2px 0;">
+              <input type="checkbox" id="editEntryClientFacing" style="width:19px; height:19px; accent-color:var(--brand); cursor:pointer; flex-shrink:0;" />
+              <span style="font-size:13.5px;">Client facing issue</span>
+            </label>
+          </div>
+          <div>
+            <span class="field-label">Note</span>
+            <textarea id="editEntryNoteInput"></textarea>
+          </div>
+          <div>
+            <span class="field-label">Photo <span style="text-transform:none; letter-spacing:0; color:var(--muted-dim);">(optional)</span></span>
+            <input type="file" id="editEntryPhotoInput" accept="image/*" capture="environment" style="display:none;" />
+            <div id="editEntryPhotoPreviewWrap" style="display:none; position:relative; margin-bottom:8px;">
+              <img id="editEntryPhotoPreviewImg" style="max-width:100%; max-height:180px; border-radius:8px; display:block;" />
+              <button type="button" id="editEntryRemovePhotoBtn" style="position:absolute; top:6px; right:6px; background:rgba(22,22,26,0.85); color:var(--red); border:1px solid var(--red); border-radius:20px; width:26px; height:26px; cursor:pointer; font-size:14px; line-height:1;">✕</button>
+            </div>
+            <button type="button" class="ghost-btn" id="editEntryAddPhotoBtn" style="border-color:var(--blue); color:var(--blue);">📷 ${entry.photo ? 'Replace photo' : 'Add photo'}</button>
+          </div>
+          <button class="submit-btn" id="saveEditEntryBtn">Save changes</button>
+          <button class="ghost-btn" id="cancelEditEntryBtn">Cancel</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(backdrop);
+    backdrop.onclick = (ev) => { if(ev.target===backdrop) backdrop.remove(); };
+    $('#cancelEditEntryBtn', backdrop).onclick = () => backdrop.remove();
+
+    $$('#editEntryCatGrid .cat-btn', backdrop).forEach(b => b.classList.toggle('selected', b.dataset.cat === entry.category));
+    $('#editEntryCatGrid', backdrop).addEventListener('click', (ev) => {
+      const btn = ev.target.closest('.cat-btn');
+      if(!btn) return;
+      $$('#editEntryCatGrid .cat-btn', backdrop).forEach(b => b.classList.toggle('selected', b===btn));
+    });
+
+    $$('#editEntryServiceGrid .cat-btn', backdrop).forEach(b => b.classList.toggle('selected', b.dataset.service === entry.service));
+    $('#editEntryServiceGrid', backdrop).addEventListener('click', (ev) => {
+      const btn = ev.target.closest('.cat-btn');
+      if(!btn) return;
+      $$('#editEntryServiceGrid .cat-btn', backdrop).forEach(b => b.classList.toggle('selected', b===btn));
+    });
+
+    $$('#editEntryTeamGrid .cat-btn', backdrop).forEach(b => b.classList.toggle('selected', editSelectedTeams.includes(b.dataset.team)));
+    $('#editEntryTeamGrid', backdrop).addEventListener('click', (ev) => {
+      const btn = ev.target.closest('.cat-btn');
+      if(!btn) return;
+      const team = btn.dataset.team;
+      const idx = editSelectedTeams.indexOf(team);
+      if(idx === -1) editSelectedTeams.push(team);
+      else editSelectedTeams.splice(idx, 1);
+      btn.classList.toggle('selected');
+    });
+
+    $$('#editEntrySevRow .sev-btn', backdrop).forEach(b => b.classList.toggle('selected', b.dataset.sev === entry.severity));
+    $('#editEntrySevRow', backdrop).addEventListener('click', (ev) => {
+      const btn = ev.target.closest('.sev-btn');
+      if(!btn) return;
+      $$('#editEntrySevRow .sev-btn', backdrop).forEach(b => b.classList.toggle('selected', b===btn));
+    });
+
+    $('#editEntryClientFacing', backdrop).checked = !!entry.clientFacing;
+    $('#editEntryNoteInput', backdrop).value = entry.note || '';
+
+    let editPendingPhoto = entry.photo || null;
+    if(editPendingPhoto){
+      $('#editEntryPhotoPreviewImg', backdrop).src = editPendingPhoto;
+      $('#editEntryPhotoPreviewWrap', backdrop).style.display = '';
+    }
+    $('#editEntryAddPhotoBtn', backdrop).onclick = () => $('#editEntryPhotoInput', backdrop).click();
+    $('#editEntryPhotoInput', backdrop).addEventListener('change', async (ev) => {
+      const file = ev.target.files[0];
+      ev.target.value = '';
+      if(!file) return;
+      const btn = $('#editEntryAddPhotoBtn', backdrop);
+      btn.disabled = true;
+      btn.textContent = 'Processing photo...';
+      try{
+        editPendingPhoto = await compressImageFile(file, 1000, 0.65);
+        $('#editEntryPhotoPreviewImg', backdrop).src = editPendingPhoto;
+        $('#editEntryPhotoPreviewWrap', backdrop).style.display = '';
+      }catch(err){
+        alert('Could not use that photo: ' + (err.message || 'unknown error'));
+      }
+      btn.disabled = false;
+      btn.textContent = editPendingPhoto ? '📷 Replace photo' : '📷 Add photo';
+    });
+    $('#editEntryRemovePhotoBtn', backdrop).onclick = () => {
+      editPendingPhoto = null;
+      $('#editEntryPhotoPreviewWrap', backdrop).style.display = 'none';
+      $('#editEntryPhotoPreviewImg', backdrop).src = '';
+      $('#editEntryAddPhotoBtn', backdrop).textContent = '📷 Add photo';
+    };
+
+    $('#saveEditEntryBtn', backdrop).onclick = async () => {
+      const catBtn = $('#editEntryCatGrid .cat-btn.selected', backdrop);
+      const serviceBtn = $('#editEntryServiceGrid .cat-btn.selected', backdrop);
+      const sevBtn = $('#editEntrySevRow .sev-btn.selected', backdrop);
+      const note = $('#editEntryNoteInput', backdrop).value.trim();
+      if(!catBtn || !serviceBtn || !sevBtn || !editSelectedTeams.length || !note){
+        alert('Please fill in category, service, at least one team, severity, and a note.');
+        return;
+      }
+      entry.category = catBtn.dataset.cat;
+      entry.service = serviceBtn.dataset.service;
+      entry.team = editSelectedTeams.join(', ');
+      entry.severity = sevBtn.dataset.sev;
+      entry.clientFacing = $('#editEntryClientFacing', backdrop).checked;
+      entry.note = note;
+      entry.photo = editPendingPhoto || null;
       await persist(saveEntries, 'entry');
       backdrop.remove();
       renderAll();
@@ -2043,6 +2419,7 @@
               <span class="fs-title">${escapeHtml(fx.label)}${fx.closed ? ' <span style="color:var(--muted-dim); font-size:10.5px; font-family:\'JetBrains Mono\',monospace; text-transform:uppercase; letter-spacing:0.05em;">· Closed</span>' : ''}</span>
               <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
                 <span class="fs-time">${fx.venue ? escapeHtml(fx.venue)+' · ' : ''}${fx.kickoff ? 'KO '+escapeHtml(fx.kickoff) : ''}</span>
+                <button class="resolve-btn edit-fixture-btn" data-id="${fx.id}" style="border-color:var(--blue); color:var(--blue);">Edit</button>
                 <button class="resolve-btn close-fixture-btn ${fx.closed?'done':''}" data-id="${fx.id}">${fx.closed ? 'Reopen' : 'Close'}</button>
               </div>
             </div>
@@ -2090,6 +2467,13 @@
         fx.closed = !fx.closed;
         await persist(saveFixtures, 'fixture');
         renderReview();
+      };
+    });
+
+    $$('.edit-fixture-btn', list).forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        showEditFixtureModal(btn.dataset.id);
       };
     });
     $$('.fixture-summary', list).forEach(card => {
