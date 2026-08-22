@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>MATCHDAY LOG</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#16161a">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Matchday Log">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap');
 
@@ -3119,6 +3126,15 @@
     renderTicker();
     if(activeTab==='log') renderLog();
     if(activeTab==='review') renderReview();
+  }
+
+  // Registers the service worker (see sw.js) for offline app-shell loading and
+  // PWA installability. Silently skipped where unsupported (older browsers)
+  // or when running from a file:// origin (service workers need http/https).
+  if('serviceWorker' in navigator && location.protocol !== 'file:'){
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch((err) => console.error('Service worker registration failed', err));
+    });
   }
 
   (async function init(){
