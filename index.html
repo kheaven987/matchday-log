@@ -2538,6 +2538,14 @@
     $('#statResolved').textContent = entries.filter(e => e.resolved).length;
   }
 
+  // Missing competition data on either side is treated as "unknown, don't let
+  // it block a match" — mainly for fixtures created before this field existed.
+  // Only refuses a match when both sides have a real, differing value.
+  function sameCompetition(a, b){
+    if(!a || !b) return true;
+    return a.trim().toLowerCase() === b.trim().toLowerCase();
+  }
+
   // ---------- TABS ----------
   $('#reviewNewFixtureBtn').addEventListener('click', showNewFixtureModal);
 
@@ -2570,21 +2578,34 @@
       if(needed === 0){ skipped++; continue; }
       statusEl.textContent = `Checking ${client.name} (${i+1}/${candidates.length})...`;
       try{
-        const results = await lookupUpcomingFixtures(client.name, client.venue, client.league, client, needed);
+        // Fetch more candidates than strictly `needed` — some of the soonest
+        // upcoming fixtures API-Sports returns will already be ones we're
+        // tracking (that's normal, not just at the boundary), and asking for
+        // only exactly `needed` meant those "used up" the slots before ever
+        // reaching a genuinely new fixture further down the list (e.g. a cup
+        // tie a few days after a league fixture against the same opponent).
+        // The extra candidates cost nothing — apiSportsFetch already retrieves
+        // every fixture in the date range in one call regardless.
+        const results = await lookupUpcomingFixtures(client.name, client.venue, client.league, client, Math.max(needed, 4));
         if(results.some(r => r.teamId)) clientIdsUpdated = true;
         let addedForThisClient = 0;
         let updatedForThisClient = 0;
         let alreadyHadForThisClient = 0;
         results.forEach(result => {
           if(!result.match_date) return;
-          // Same real match if either the opponent matches (catches a reschedule —
-          // date/kickoff changed but it's still the same fixture) or the date matches
-          // exactly (catches an opponent-name spelling mismatch between lookup
-          // sources, e.g. "Coventry" vs "Coventry City"). Either signal is enough —
-          // update the existing fixture in place rather than adding a duplicate.
+          // Same real match if the date matches exactly (catches an opponent-name
+          // spelling mismatch between lookup sources, e.g. "Coventry" vs "Coventry
+          // City") OR the opponent matches AND it's the same competition (catches
+          // a reschedule — date/kickoff changed but it's still the same fixture).
+          // Competition matters here: the same two clubs can legitimately play
+          // each other twice within days in different competitions (e.g. league +
+          // league cup) — matching on opponent name alone wrongly merged those
+          // into one fixture. sameCompetition() treats missing competition data on
+          // either side as a non-blocking unknown, for fixtures created before this
+          // field existed.
           const existingMatch = existingUpcoming.find(f =>
-            (f.away||'').trim().toLowerCase() === (result.opponent||'').trim().toLowerCase() ||
-            f.matchDate === result.match_date
+            f.matchDate === result.match_date ||
+            ((f.away||'').trim().toLowerCase() === (result.opponent||'').trim().toLowerCase() && sameCompetition(f.competition, result.competition))
           );
           if(existingMatch){
             let changed = false;
@@ -2596,15 +2617,20 @@
             }
             if(result.kickoff_time && existingMatch.kickoff !== result.kickoff_time){ existingMatch.kickoff = result.kickoff_time; changed = true; }
             if(result.venue && existingMatch.venue !== result.venue){ existingMatch.venue = result.venue; changed = true; }
+            if(result.competition && existingMatch.competition !== result.competition){ existingMatch.competition = result.competition; changed = true; }
             if(changed){ updated++; updatedForThisClient++; fixturesTouched = true; }
             else { alreadyHadForThisClient++; }
             return;
           }
+          // Enough new fixtures added for this client already — still processed
+          // above for updates, just don't add further new ones this run.
+          if(addedForThisClient >= needed) return;
           const label = `${client.name} v ${result.opponent || '?'}`;
           const newFx = {
             id: uid(), label, home: client.name, away: result.opponent || '',
             venue: result.venue || client.venue || '', kickoff: result.kickoff_time || '',
-            matchDate: result.match_date, closed: false, createdAt: new Date().toISOString()
+            matchDate: result.match_date, competition: result.competition || '',
+            closed: false, createdAt: new Date().toISOString()
           };
           fixtures.push(newFx);
           existingUpcoming.push(newFx);
