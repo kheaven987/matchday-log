@@ -18,7 +18,7 @@ This is a git repo (public on GitHub, deployed via GitHub Pages) but there's sti
 
 **Locally:** just open `index.html` in a browser (double-click, or drag into a tab). No server, build, or install step. Outside claude.ai it uses `localStorage` in place of the artifact `window.storage` API (see polyfill at the top of the `<script>` block) — data is per-browser-profile only.
 
-**On GitHub Pages:** same behavior — it's a static file, `window.storage` still doesn't exist there so the `localStorage` polyfill kicks in, meaning data is scoped per-device/per-browser, not synced between them. This is also the way to get a working Dictate button (Web Speech API needs a secure context — `https://` — which a local `file://` open doesn't reliably provide).
+**On GitHub Pages:** same behavior — it's a static file, `window.storage` still doesn't exist there so the `localStorage` polyfill kicks in, meaning data is scoped per-device/per-browser by default (see Cross-device sync below for the opt-in fix). This is also the way to get a working Dictate button (Web Speech API needs a secure context — `https://` — which a local `file://` open doesn't reliably provide).
 
 ## Architecture
 
@@ -36,6 +36,8 @@ All writes go through `persist(saveFn, label)`, which retries a save 3x with bac
 2. **Claude web-search fallback** (`callClaudeAPI`, only reachable for leagues *not* in `APISPORTS_LEAGUE_IDS`, e.g. "Other") — calls `api.anthropic.com/v1/messages` directly with the `web_search_20250305` tool and expects a JSON-only reply, parsed by `extractJson()`. This only works inside claude.ai, where that fetch is proxied/authorized by the artifact host — it has no API key of its own and will fail outside that environment.
 
 Club list lookups (`getClubsForLeague`) are cached 14 days per-league under `md-league-clubs-<league>`.
+
+**Cross-device sync** (opt-in, Admin tab "Sync across devices") uses the same Cloudflare Worker as the API-Sports proxy, on a different route (`/sync`), backed by a Workers KV namespace (`MATCHDAY_SYNC`, bound in `wrangler.toml`) and gated by a `SYNC_TOKEN` secret sent as the `x-sync-token` header. It's a single JSON blob (the whole `{fixtures, entries, clients, updatedAt}` shape, same shape as Export/Import) — **last-write-wins, no merging**, built for one person's own devices, not concurrent multi-user editing. `loadData()` pulls from the cloud on startup when sync is configured (falling back to local storage if unreachable); `persist()` fire-and-forgets a push after every successful local save. The one place this needed real care: **first-time connection** (`connectSync()`, triggered by the Save button) deliberately does *not* push-then-pull like the manual "Sync now" button (`syncNow()`) does — a freshly connected device's local state is usually empty, and pushing first would silently wipe out whatever's already in the cloud from another device. `connectSync()` checks both sides first and only prompts (via `confirm()`) when there's a genuine conflict (both sides have different data); this was an actual bug caught by testing the flow end-to-end, not a hypothetical.
 
 ## Known gaps worth knowing before touching related code
 
