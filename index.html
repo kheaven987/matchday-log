@@ -917,19 +917,63 @@
     }
   }
 
-  // Manual "Sync now": push first (protects any local change that might not
-  // have made it to the cloud yet), then pull (to pick up anything saved from
-  // another device), then re-render whatever tab is showing.
+  function rerenderAfterSyncChange(){
+    renderAll();
+    if(activeTab==='log') renderLog();
+    if(activeTab==='review') renderReview();
+    if(activeTab==='clients') renderClients();
+  }
+
+  // Manual "Sync now" (used once already connected): push first (protects any
+  // local change that might not have made it to the cloud yet), then pull (to
+  // pick up anything saved from another device). Safe once both sides are
+  // already roughly in sync — see connectSync() below for why first-time setup
+  // needs different, more careful handling.
   async function syncNow(){
     if(!(await syncConfigured())){ await refreshSyncStatus(); return; }
     await pushToCloud();
     const pulled = await pullFromCloud();
-    if(pulled){
-      renderAll();
-      if(activeTab==='log') renderLog();
-      if(activeTab==='review') renderReview();
-      if(activeTab==='clients') renderClients();
+    if(pulled) rerenderAfterSyncChange();
+  }
+
+  // First-time "Save" on the Sync card. Deliberately NOT push-then-pull like
+  // syncNow(): a freshly-connected device's local state is often empty, and
+  // pushing first would silently wipe out whatever's already in the cloud from
+  // another device — exactly the data loss this feature exists to prevent.
+  // Instead: look at both sides first, and only ask when there's a real
+  // conflict (both have data, and it differs) rather than guessing.
+  async function connectSync(){
+    const syncUrl = await getSyncUrl();
+    const syncToken = await getSyncToken();
+    let cloudData = null;
+    try{
+      const res = await fetch(`${syncUrl}/sync`, { headers: { 'x-sync-token': syncToken } });
+      if(res.ok) cloudData = await res.json();
+    }catch(e){ /* unreachable — fall through and treat as "nothing to pull" */ }
+
+    const localHasData = fixtures.length > 0 || entries.length > 0 || clients.length > 0;
+    const cloudHasData = !!(cloudData && ((cloudData.fixtures||[]).length || (cloudData.entries||[]).length || (cloudData.clients||[]).length));
+
+    if(cloudHasData && localHasData){
+      const useCloud = confirm(
+        `This device already has local data, and the cloud already has different data from another device.\n\n` +
+        `OK = use the cloud's data here (this device's current data will be replaced).\n` +
+        `Cancel = keep this device's data and overwrite the cloud with it instead.`
+      );
+      if(useCloud){
+        await pullFromCloud();
+      } else {
+        await pushToCloud();
+      }
+    } else if(cloudHasData && !localHasData){
+      // Fresh device, existing cloud data — inherit it, don't push over it.
+      await pullFromCloud();
+    } else {
+      // Local has data (or both are empty) — nothing at risk, safe to push.
+      await pushToCloud();
     }
+    rerenderAfterSyncChange();
+    await refreshSyncStatus();
   }
 
   async function refreshSyncStatus(){
@@ -1993,7 +2037,7 @@
       urlInput.value = '';
       tokenInput.value = '';
       await refreshSyncStatus();
-      await syncNow();
+      await connectSync();
     }catch(e){
       alert('Could not save sync settings: ' + (e.message || 'unknown error'));
     }
