@@ -547,7 +547,7 @@
       <div style="font-size:12px; color:var(--muted); margin-bottom:10px;">Keeps fixtures, log entries, and clients in sync across your own devices, using the same Cloudflare Worker as the API-Sports proxy (a /sync endpoint on it). Built for one person on multiple devices — if two devices save at the same moment, the most recent one wins.</div>
       <div class="stack">
         <input id="syncUrlInput" type="text" placeholder="https://your-worker.workers.dev" autocomplete="off" />
-        <input id="syncTokenInput" type="password" placeholder="Sync token" autocomplete="off" />
+        <input id="syncTokenInput" type="text" placeholder="Sync token" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
         <div style="display:flex; gap:8px;">
           <button class="ghost-btn" id="saveSyncBtn" style="width:auto; flex:1;">Save</button>
           <button class="ghost-btn" id="clearSyncBtn" style="width:auto; flex:1;">Clear</button>
@@ -2028,7 +2028,10 @@
     const tokenInput = $('#syncTokenInput');
     const url = normalizeProxyUrl(urlInput.value);
     const token = tokenInput.value.trim();
-    if(!url || !token) return;
+    if(!url || !token){
+      alert(`Enter both a Sync URL and a Sync token before saving.${!url ? ' The URL field looks empty.' : ''}${!token ? ' The token field looks empty.' : ''}`);
+      return;
+    }
     try{
       await window.storage.set(SYNC_URL_STORAGE_KEY, url, false);
       await window.storage.set(SYNC_TOKEN_STORAGE_KEY, token, false);
