@@ -235,6 +235,10 @@
     border-radius: 9px; padding: 10px; font-family:'Inter'; font-size: 13px; cursor:pointer;
     width:100%;
   }
+  .ghost-btn:disabled{
+    border-color: var(--line) !important; color: var(--muted-dim) !important;
+    cursor:not-allowed; opacity: 0.6;
+  }
 
   /* Log entries */
   .filters{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom: 12px; }
@@ -446,7 +450,8 @@
       <button class="ghost-btn" id="reviewNewFixtureBtn" style="border-color: var(--brand); color: var(--brand); flex:1;">+ New fixture</button>
       <button class="ghost-btn" id="refreshFixturesBtn" style="border-color: var(--blue); color: var(--blue); flex:1;">↻ Refresh fixtures</button>
     </div>
-    <button class="ghost-btn" id="emailSummaryBtn" style="border-color: var(--signal); color: var(--signal); margin-bottom:10px;">✉️ Email today's summary</button>
+    <button class="ghost-btn" id="emailSummaryBtn" style="border-color: var(--signal); color: var(--signal); margin-bottom:4px;">📋 Generate summary</button>
+    <div id="summaryBtnStatus" style="display:none; font-size:11px; color:var(--muted-dim); margin-bottom:10px;"></div>
     <div id="refreshFixturesStatus" style="display:none; font-size:11.5px; color:var(--muted); margin-bottom:12px;"></div>
     <div id="reviewList"></div>
   </div>
@@ -523,7 +528,7 @@
 
     <div class="card">
       <h2>Report recipient <span id="reportRecipientStatus" style="font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--muted-dim); text-transform:none; letter-spacing:0;"></span></h2>
-      <div style="font-size:12px; color:var(--muted); margin-bottom:10px;">Who "✉️ Email today's summary" (on the Fixtures tab) is addressed to. Opens a draft in your own mail app with the summary pre-filled — this app never sends anything itself.</div>
+      <div style="font-size:12px; color:var(--muted); margin-bottom:10px;">Who "📋 Generate summary" (on the Fixtures tab) addresses its plain-text mail draft to. This app never sends anything itself.</div>
       <div class="stack">
         <input id="reportRecipientInput" type="email" placeholder="name@example.com" autocomplete="off" />
         <div style="display:flex; gap:8px;">
@@ -1899,6 +1904,27 @@
     return d.toLocaleDateString([], {weekday:'long', day:'numeric', month:'long'});
   }
 
+  // "Generate summary" is only meaningful once today's coverage is actually
+  // done — the only signal this app has for that is the same manual "closed"
+  // toggle used to hide fixtures from the list (there's no live match-status
+  // feed), so: available once every one of today's fixtures is closed (or
+  // there simply aren't any yet).
+  function refreshSummaryBtnAvailability(){
+    const btn = $('#emailSummaryBtn');
+    const statusEl = $('#summaryBtnStatus');
+    if(!btn || !statusEl) return;
+    const todayStr = new Date().toISOString().slice(0,10);
+    const openToday = fixtures.filter(f => f.matchDate === todayStr && !f.closed);
+    if(openToday.length){
+      btn.disabled = true;
+      statusEl.style.display = '';
+      statusEl.textContent = `Available once today's remaining ${openToday.length} fixture${openToday.length===1?'':'s'} ${openToday.length===1?'is':'are'} closed.`;
+    } else {
+      btn.disabled = false;
+      statusEl.style.display = 'none';
+    }
+  }
+
   function closedToggleHtml(closedCount){
     if(showClosedFixtures){
       return `<div style="text-align:center; padding:14px 16px;"><span id="closedFixturesToggle" style="color:var(--blue); cursor:pointer; font-family:'JetBrains Mono',monospace; font-size:11.5px; text-decoration:underline;">Hide closed fixtures</span></div>`;
@@ -1910,6 +1936,7 @@
   }
 
   function renderReview(){
+    refreshSummaryBtnAvailability();
     const list = $('#reviewList');
     if(!fixtures.length){
       list.innerHTML = `<div class="empty">No fixtures yet.<br>Tap + New fixture above to add one.</div>`;
