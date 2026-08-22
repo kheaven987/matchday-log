@@ -803,11 +803,9 @@
     return cachedReportRecipient;
   }
 
-  // Builds a plain-text summary of today's fixtures and their logged entries,
-  // for the mailto: link below. Plain text on purpose — mailto: bodies don't
-  // reliably render markdown/HTML, so flags like severity/client-facing/resolved
-  // are bracketed tags instead of bold/strikethrough.
-  function buildTodaysSummaryText(){
+  // Shared data-gathering for both summary builders below (plain-text for the
+  // mailto: link, HTML for the branded copy-paste version).
+  function gatherTodaysSummaryData(){
     const todayStr = new Date().toISOString().slice(0,10);
     const todaysFixtures = fixtures.filter(f => f.matchDate === todayStr);
     if(!todaysFixtures.length) return null;
@@ -823,25 +821,41 @@
       const resolved = fxEntries.length - open;
       totalOpen += open;
       totalResolved += resolved;
-      const lines = [`${fx.label} — ${open} open, ${resolved} resolved`];
-      fxEntries.forEach(e => {
-        if(e.clientFacing) totalClientFacing++;
-        const flags = [];
-        if(e.severity && e.severity !== 'minor') flags.push(e.severity.toUpperCase());
-        if(e.clientFacing) flags.push('CLIENT FACING');
-        if(e.resolved) flags.push('RESOLVED');
-        const flagStr = flags.length ? ` [${flags.join(', ')}]` : '';
-        lines.push(`  - ${e.category}${e.service ? ' · '+e.service : ''} (${e.team || 'unassigned'}): ${e.note}${flagStr}`);
-      });
-      withEntries.push(lines.join('\n'));
+      fxEntries.forEach(e => { if(e.clientFacing) totalClientFacing++; });
+      withEntries.push({ fx, fxEntries, open, resolved });
     });
 
-    const totalEntries = totalOpen + totalResolved;
+    return {
+      todayStr, withEntries, withoutEntries,
+      totalOpen, totalResolved, totalClientFacing,
+      totalEntries: totalOpen + totalResolved
+    };
+  }
+
+  // Builds a plain-text summary, for the mailto: link below. Plain text on
+  // purpose — mailto: bodies don't reliably render markdown/HTML, so flags like
+  // severity/client-facing/resolved are bracketed tags instead of bold/strikethrough.
+  function buildTodaysSummaryText(){
+    const data = gatherTodaysSummaryData();
+    if(!data) return null;
+    const { todayStr, withEntries, withoutEntries, totalOpen, totalResolved, totalClientFacing, totalEntries } = data;
+
     const header = `Summary of issues logged today (${todayStr}) — ${totalEntries} ${totalEntries===1?'entry':'entries'} total, ${totalOpen} open, ${totalResolved} resolved${totalClientFacing ? `, ${totalClientFacing} client facing` : ''}.`;
 
     const parts = [header, ''];
     if(withEntries.length){
-      parts.push(withEntries.join('\n\n'));
+      parts.push(withEntries.map(({fx, fxEntries, open, resolved}) => {
+        const lines = [`${fx.label} — ${open} open, ${resolved} resolved`];
+        fxEntries.forEach(e => {
+          const flags = [];
+          if(e.severity && e.severity !== 'minor') flags.push(e.severity.toUpperCase());
+          if(e.clientFacing) flags.push('CLIENT FACING');
+          if(e.resolved) flags.push('RESOLVED');
+          const flagStr = flags.length ? ` [${flags.join(', ')}]` : '';
+          lines.push(`  - ${e.category}${e.service ? ' · '+e.service : ''} (${e.team || 'unassigned'}): ${e.note}${flagStr}`);
+        });
+        return lines.join('\n');
+      }).join('\n\n'));
     } else {
       parts.push('No issues logged against any of today\'s fixtures.');
     }
@@ -850,6 +864,77 @@
       parts.push(`No issues logged for: ${withoutEntries.join(', ')}.`);
     }
     return parts.join('\n');
+  }
+
+  // Builds a branded, inline-styled HTML version of the same summary, meant to
+  // be copied and pasted into a rich-text email compose window (Gmail/Outlook
+  // web), where the formatting carries over — mailto: can't do this itself.
+  // Uses nested tables and only inline styles (no CSS variables, no flexbox/
+  // grid) since that's what survives both the paste step and, best-effort,
+  // rendering in an actual received email afterwards.
+  const SEV_HEX = { minor: '#4ea1f5', moderate: '#f5a524', major: '#f2495c' };
+  function buildTodaysSummaryHtml(){
+    const data = gatherTodaysSummaryData();
+    if(!data) return null;
+    const { todayStr, withEntries, withoutEntries, totalOpen, totalResolved, totalClientFacing, totalEntries } = data;
+    const dateLabel = new Date(todayStr+'T00:00').toLocaleDateString([], {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+
+    const statCell = (label, value, color) => `
+      <td style="padding-right:18px; font-family:'Courier New',monospace; font-size:12px; color:#9a9aa2;">
+        ${escapeHtml(label)} <b style="color:${color};">${value}</b>
+      </td>`;
+
+    const entryRow = (e) => {
+      const sevColor = SEV_HEX[e.severity] || SEV_HEX.minor;
+      const badges = [];
+      if(e.severity && e.severity !== 'minor') badges.push(`<span style="display:inline-block; background-color:${sevColor}; color:#16161a; font-size:10px; font-weight:bold; text-transform:uppercase; letter-spacing:0.03em; padding:2px 7px; border-radius:10px; margin-left:6px;">${escapeHtml(e.severity)}</span>`);
+      if(e.clientFacing) badges.push(`<span style="display:inline-block; background-color:#f2495c; color:#ffffff; font-size:10px; font-weight:bold; text-transform:uppercase; letter-spacing:0.03em; padding:2px 7px; border-radius:10px; margin-left:6px;">Client facing</span>`);
+      if(e.resolved) badges.push(`<span style="display:inline-block; background-color:#34d399; color:#16161a; font-size:10px; font-weight:bold; text-transform:uppercase; letter-spacing:0.03em; padding:2px 7px; border-radius:10px; margin-left:6px;">Resolved</span>`);
+      const noteStyle = e.resolved ? 'color:#5c5c64; text-decoration:line-through;' : 'color:#f2f2f4;';
+      return `
+        <tr><td style="padding:0 0 8px 0;">
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#24242a; border-left:3px solid ${e.resolved ? '#34d399' : sevColor}; border-radius:0 4px 4px 0;">
+            <tr><td style="padding:7px 10px 2px;">
+              <span style="font-family:'Courier New',monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:0.03em; color:#9a9aa2;">${escapeHtml(e.category)}${e.service ? ' &middot; '+escapeHtml(e.service) : ''} &middot; ${escapeHtml(e.team || 'unassigned')}</span>
+              ${badges.join('')}
+            </td></tr>
+            <tr><td style="padding:2px 10px 8px; font-family:Arial,Helvetica,sans-serif; font-size:13.5px; line-height:1.4; ${noteStyle}">${escapeHtml(e.note)}</td></tr>
+          </table>
+        </td></tr>`;
+    };
+
+    const fixtureBlock = ({fx, fxEntries, open, resolved}) => `
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#1e1e23; border:1px solid #35353c; border-left:4px solid #ff2e63; margin-bottom:14px;">
+        <tr><td style="padding:12px 14px;">
+          <div style="font-family:Arial,Helvetica,sans-serif; font-size:15px; font-weight:bold; color:#f2f2f4;">
+            ${escapeHtml(fx.label)}
+            <span style="font-size:11px; color:#9a9aa2; font-weight:normal;"> — ${open} open, ${resolved} resolved</span>
+          </div>
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-top:8px;">
+            ${fxEntries.map(entryRow).join('')}
+          </table>
+        </td></tr>
+      </table>`;
+
+    return `
+<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:640px; background-color:#16161a;">
+  <tr><td style="padding:20px;">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-bottom:3px solid #ff2e63; padding-bottom:12px; margin-bottom:16px;">
+      <tr><td style="font-family:Arial,Helvetica,sans-serif; font-size:20px; font-weight:bold; letter-spacing:0.04em; text-transform:uppercase; color:#f2f2f4;">
+        <span style="color:#ff2e63;">&#9679;</span>&nbsp;Matchday Log <span style="color:#9a9aa2; font-weight:normal;">— Daily Summary</span>
+      </td></tr>
+      <tr><td style="font-family:'Courier New',monospace; font-size:12px; color:#9a9aa2; padding-top:4px;">${escapeHtml(dateLabel)}</td></tr>
+    </table>
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:20px;"><tr>
+      ${statCell('ENTRIES', totalEntries, '#f2f2f4')}
+      ${statCell('OPEN', totalOpen, '#f2495c')}
+      ${statCell('RESOLVED', totalResolved, '#34d399')}
+      ${totalClientFacing ? statCell('CLIENT FACING', totalClientFacing, '#f5a524') : ''}
+    </tr></table>
+    ${withEntries.length ? withEntries.map(fixtureBlock).join('') : `<div style="font-family:Arial,Helvetica,sans-serif; color:#9a9aa2; font-size:13.5px;">No issues logged against any of today's fixtures.</div>`}
+    ${withoutEntries.length ? `<div style="font-family:Arial,Helvetica,sans-serif; font-size:12px; color:#5c5c64; margin-top:6px;">No issues logged for: ${escapeHtml(withoutEntries.join(', '))}.</div>` : ''}
+  </td></tr>
+</table>`;
   }
 
   async function getApiSportsKey(){
@@ -2204,7 +2289,9 @@
     await refreshReportRecipientStatus();
   });
 
-  $('#emailSummaryBtn').addEventListener('click', async () => {
+  // Opens the plain-text summary as a mailto: draft — the reliable fallback
+  // when rich-paste isn't available or doesn't behave as expected.
+  async function openSummaryMailto(){
     const body = buildTodaysSummaryText();
     if(!body){
       alert("No fixtures are scheduled for today, so there's nothing to summarise.");
@@ -2237,7 +2324,57 @@
       alert("Heads up: that summary was long enough that some mail apps (Outlook especially) can truncate it — worth a quick check that the full text made it into the draft.");
     }
     a.remove();
-  });
+  }
+
+  function showSummaryPreviewModal(){
+    const html = buildTodaysSummaryHtml();
+    if(!html){
+      alert("No fixtures are scheduled for today, so there's nothing to summarise.");
+      return;
+    }
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    backdrop.innerHTML = `
+      <div class="modal" style="max-width:680px;">
+        <h2>Today's summary</h2>
+        <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">Copy this and paste it into a Gmail or Outlook (web) compose window — the formatting carries over. "Open in mail app" instead sends a plain-text version to your device's own mail app.</div>
+        <div id="summaryPreviewBox" style="border:1px solid var(--line); border-radius:10px; overflow:auto; max-height:50vh; margin-bottom:14px; -webkit-user-select:text; user-select:text;">${html}</div>
+        <div id="summaryCopyStatus" style="display:none; font-size:11.5px; color:var(--muted); margin-bottom:10px;"></div>
+        <div class="stack">
+          <button class="submit-btn" id="copySummaryHtmlBtn" style="background:var(--signal);">📋 Copy for email</button>
+          <button class="ghost-btn" id="openSummaryMailtoBtn" style="border-color: var(--blue); color: var(--blue);">✉️ Open in mail app (plain text)</button>
+          <button class="ghost-btn" id="closeSummaryModalBtn">Close</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(backdrop);
+    backdrop.onclick = (e) => { if(e.target===backdrop) backdrop.remove(); };
+    $('#closeSummaryModalBtn', backdrop).onclick = () => backdrop.remove();
+    $('#openSummaryMailtoBtn', backdrop).onclick = () => openSummaryMailto();
+
+    $('#copySummaryHtmlBtn', backdrop).onclick = async () => {
+      const statusEl = $('#summaryCopyStatus', backdrop);
+      const plainText = buildTodaysSummaryText() || '';
+      try{
+        if(!navigator.clipboard || !window.ClipboardItem) throw new Error('Clipboard API not available in this browser');
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html': new Blob([html], { type: 'text/html' }),
+            'text/plain': new Blob([plainText], { type: 'text/plain' })
+          })
+        ]);
+        statusEl.style.display = '';
+        statusEl.style.color = 'var(--signal)';
+        statusEl.textContent = 'Copied — paste it into your email compose window.';
+      }catch(err){
+        statusEl.style.display = '';
+        statusEl.style.color = 'var(--red)';
+        statusEl.textContent = `Couldn't copy automatically (${err.message || 'unknown error'}) — try selecting the preview above and copying manually (Ctrl/Cmd+C), or use "Open in mail app" instead.`;
+      }
+    };
+  }
+
+  $('#emailSummaryBtn').addEventListener('click', showSummaryPreviewModal);
 
   // ---------- BACKUP / EXPORT / IMPORT ----------
   $('#exportBtn').addEventListener('click', () => {
