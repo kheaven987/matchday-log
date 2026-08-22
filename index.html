@@ -542,6 +542,19 @@
         </div>
       </div>
     </div>
+    <div class="card">
+      <h2>Sync across devices <span id="syncStatus" style="font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--muted-dim); text-transform:none; letter-spacing:0;"></span></h2>
+      <div style="font-size:12px; color:var(--muted); margin-bottom:10px;">Keeps fixtures, log entries, and clients in sync across your own devices, using the same Cloudflare Worker as the API-Sports proxy (a /sync endpoint on it). Built for one person on multiple devices — if two devices save at the same moment, the most recent one wins.</div>
+      <div class="stack">
+        <input id="syncUrlInput" type="text" placeholder="https://your-worker.workers.dev" autocomplete="off" />
+        <input id="syncTokenInput" type="password" placeholder="Sync token" autocomplete="off" />
+        <div style="display:flex; gap:8px;">
+          <button class="ghost-btn" id="saveSyncBtn" style="width:auto; flex:1;">Save</button>
+          <button class="ghost-btn" id="clearSyncBtn" style="width:auto; flex:1;">Clear</button>
+        </div>
+        <button class="ghost-btn" id="syncNowBtn" style="border-color: var(--blue); color: var(--blue);">↻ Sync now</button>
+      </div>
+    </div>
   </div>
 </main>
 
@@ -599,18 +612,28 @@
   function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 
   async function loadData(){
-    try{
-      const f = await window.storage.get('md-fixtures', false);
-      fixtures = f ? JSON.parse(f.value) : [];
-    }catch(e){ fixtures = []; }
-    try{
-      const e = await window.storage.get('md-entries', false);
-      entries = e ? JSON.parse(e.value) : [];
-    }catch(e){ entries = []; }
-    try{
-      const c = await window.storage.get('md-clients', false);
-      clients = c ? JSON.parse(c.value) : [];
-    }catch(e){ clients = []; }
+    // If cross-device sync is configured, the cloud copy is treated as the
+    // source of truth on load (see the SYNC section below) — falls back to
+    // local storage if sync isn't set up or the cloud is unreachable.
+    const cloudLoaded = await pullFromCloud();
+    if(cloudLoaded){
+      try{ await window.storage.set('md-fixtures', JSON.stringify(fixtures), false); }catch(e){ /* local mirror is best-effort */ }
+      try{ await window.storage.set('md-entries', JSON.stringify(entries), false); }catch(e){ /* local mirror is best-effort */ }
+      try{ await window.storage.set('md-clients', JSON.stringify(clients), false); }catch(e){ /* local mirror is best-effort */ }
+    } else {
+      try{
+        const f = await window.storage.get('md-fixtures', false);
+        fixtures = f ? JSON.parse(f.value) : [];
+      }catch(e){ fixtures = []; }
+      try{
+        const e = await window.storage.get('md-entries', false);
+        entries = e ? JSON.parse(e.value) : [];
+      }catch(e){ entries = []; }
+      try{
+        const c = await window.storage.get('md-clients', false);
+        clients = c ? JSON.parse(c.value) : [];
+      }catch(e){ clients = []; }
+    }
     if(fixtures.length && !selectedFixtureId){
       selectedFixtureId = fixtures[fixtures.length-1].id;
     }
@@ -653,6 +676,7 @@
     for(let attempt=0; attempt<=delays.length; attempt++){
       try{
         await saveFn();
+        pushToCloud(); // fire-and-forget — don't block the UI on cloud sync
         return;
       }catch(e){
         if(attempt < delays.length){ await sleep(delays[attempt]); continue; }
@@ -788,6 +812,140 @@
       cachedProxyUrl = '';
     }
     return cachedProxyUrl;
+  }
+
+  // ---------- CROSS-DEVICE SYNC ----------
+  // Same Cloudflare Worker as the API-Sports proxy, a different route (/sync),
+  // backed by Workers KV. Single-blob, last-write-wins — built for one person
+  // syncing their own devices, not for multiple people editing at the same
+  // moment (see the comment in cloudflare-worker.js for the full reasoning).
+  const SYNC_URL_STORAGE_KEY = 'md-sync-url';
+  const SYNC_TOKEN_STORAGE_KEY = 'md-sync-token';
+  let cachedSyncUrl = null;
+  let cachedSyncToken = null;
+  let lastSyncAt = null;
+  let lastSyncOk = null;
+
+  async function getSyncUrl(){
+    if(cachedSyncUrl !== null) return cachedSyncUrl;
+    try{
+      const res = await window.storage.get(SYNC_URL_STORAGE_KEY, false);
+      cachedSyncUrl = res ? normalizeProxyUrl(res.value) : '';
+    }catch(e){
+      cachedSyncUrl = '';
+    }
+    return cachedSyncUrl;
+  }
+
+  async function getSyncToken(){
+    if(cachedSyncToken !== null) return cachedSyncToken;
+    try{
+      const res = await window.storage.get(SYNC_TOKEN_STORAGE_KEY, false);
+      cachedSyncToken = res ? res.value : '';
+    }catch(e){
+      cachedSyncToken = '';
+    }
+    return cachedSyncToken;
+  }
+
+  async function syncConfigured(){
+    const url = await getSyncUrl();
+    const token = await getSyncToken();
+    return !!(url && token);
+  }
+
+  // Pushes the current in-memory state to the cloud. Fire-and-forget from
+  // callers' point of view (persist() doesn't await this) — retries a few times
+  // in the background, and on final failure just leaves a status note on the
+  // Admin tab rather than an intrusive toast, since local data is never at risk
+  // (this only affects whether *other* devices see the latest yet).
+  async function pushToCloud(){
+    if(!(await syncConfigured())) return;
+    const syncUrl = await getSyncUrl();
+    const syncToken = await getSyncToken();
+    const payload = JSON.stringify({ fixtures, entries, clients, updatedAt: new Date().toISOString() });
+    const delays = [500, 1500, 3000];
+    for(let attempt=0; attempt<=delays.length; attempt++){
+      try{
+        const res = await fetch(`${syncUrl}/sync`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'x-sync-token': syncToken },
+          body: payload
+        });
+        if(!res.ok) throw new Error(`sync push failed (${res.status})`);
+        lastSyncAt = new Date();
+        lastSyncOk = true;
+        refreshSyncStatus();
+        return;
+      }catch(e){
+        if(attempt < delays.length){ await sleep(delays[attempt]); continue; }
+        console.error('cloud sync push failed', e);
+        lastSyncAt = new Date();
+        lastSyncOk = false;
+        refreshSyncStatus();
+      }
+    }
+  }
+
+  // Pulls the cloud copy and, if it looks valid, replaces in-memory state with
+  // it. Returns true if it did so (so loadData() knows not to also read local
+  // storage), false if sync isn't configured or the cloud was unreachable.
+  async function pullFromCloud(){
+    if(!(await syncConfigured())) return false;
+    const syncUrl = await getSyncUrl();
+    const syncToken = await getSyncToken();
+    try{
+      const res = await fetch(`${syncUrl}/sync`, { headers: { 'x-sync-token': syncToken } });
+      if(!res.ok) throw new Error(`sync pull failed (${res.status})`);
+      const data = await res.json();
+      if(!data || !Array.isArray(data.fixtures) || !Array.isArray(data.entries) || !Array.isArray(data.clients)){
+        throw new Error('unexpected sync response shape');
+      }
+      fixtures = data.fixtures;
+      entries = data.entries;
+      clients = data.clients;
+      lastSyncAt = new Date();
+      lastSyncOk = true;
+      refreshSyncStatus();
+      return true;
+    }catch(e){
+      console.error('cloud sync pull failed', e);
+      lastSyncAt = new Date();
+      lastSyncOk = false;
+      refreshSyncStatus();
+      return false;
+    }
+  }
+
+  // Manual "Sync now": push first (protects any local change that might not
+  // have made it to the cloud yet), then pull (to pick up anything saved from
+  // another device), then re-render whatever tab is showing.
+  async function syncNow(){
+    if(!(await syncConfigured())){ await refreshSyncStatus(); return; }
+    await pushToCloud();
+    const pulled = await pullFromCloud();
+    if(pulled){
+      renderAll();
+      if(activeTab==='log') renderLog();
+      if(activeTab==='review') renderReview();
+      if(activeTab==='clients') renderClients();
+    }
+  }
+
+  async function refreshSyncStatus(){
+    const el = $('#syncStatus');
+    if(!el) return;
+    const configured = await syncConfigured();
+    if(!configured){
+      el.textContent = '(not set — this device only)';
+      return;
+    }
+    if(!lastSyncAt){
+      el.textContent = '(configured)';
+      return;
+    }
+    const when = lastSyncAt.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    el.textContent = lastSyncOk ? `(synced ${when})` : `(sync failed ${when} — will retry)`;
   }
 
   let lastApiSportsCallAt = 0;
@@ -1821,6 +1979,49 @@
     await refreshProxyUrlStatus();
   });
 
+  $('#saveSyncBtn').addEventListener('click', async () => {
+    const urlInput = $('#syncUrlInput');
+    const tokenInput = $('#syncTokenInput');
+    const url = normalizeProxyUrl(urlInput.value);
+    const token = tokenInput.value.trim();
+    if(!url || !token) return;
+    try{
+      await window.storage.set(SYNC_URL_STORAGE_KEY, url, false);
+      await window.storage.set(SYNC_TOKEN_STORAGE_KEY, token, false);
+      cachedSyncUrl = url;
+      cachedSyncToken = token;
+      urlInput.value = '';
+      tokenInput.value = '';
+      await refreshSyncStatus();
+      await syncNow();
+    }catch(e){
+      alert('Could not save sync settings: ' + (e.message || 'unknown error'));
+    }
+  });
+
+  $('#clearSyncBtn').addEventListener('click', async () => {
+    try{
+      await window.storage.delete(SYNC_URL_STORAGE_KEY, false);
+      await window.storage.delete(SYNC_TOKEN_STORAGE_KEY, false);
+    }catch(e){ /* fine if it never existed */ }
+    cachedSyncUrl = '';
+    cachedSyncToken = '';
+    lastSyncAt = null;
+    lastSyncOk = null;
+    $('#syncUrlInput').value = '';
+    $('#syncTokenInput').value = '';
+    await refreshSyncStatus();
+  });
+
+  $('#syncNowBtn').addEventListener('click', async () => {
+    const btn = $('#syncNowBtn');
+    btn.disabled = true;
+    btn.textContent = 'Syncing...';
+    await syncNow();
+    btn.disabled = false;
+    btn.textContent = '↻ Sync now';
+  });
+
   // ---------- DELETE PASSWORD SETTINGS ----------
   async function refreshDeletePasswordStatus(){
     const pass = await getDeletePassword();
@@ -2015,7 +2216,7 @@
     if(tabName==='log') renderLog();
     if(tabName==='review') renderReview();
     if(tabName==='clients') renderClients();
-    if(tabName==='admin'){ refreshDeletePasswordStatus(); refreshProxyUrlStatus(); }
+    if(tabName==='admin'){ refreshDeletePasswordStatus(); refreshProxyUrlStatus(); refreshSyncStatus(); }
   }
 
   $$('.tab').forEach(tab => {
@@ -2042,6 +2243,7 @@
     renderAll();
     refreshDeletePasswordStatus();
     refreshProxyUrlStatus();
+    refreshSyncStatus();
     initDictation();
   })();
 })();

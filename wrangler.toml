@@ -1,3 +1,10 @@
 name = "matchday-log-apisports-proxy"
 main = "cloudflare-worker.js"
 compatibility_date = "2024-01-01"
+
+# Backs the /sync endpoint used for cross-device data sync — see the "SYNC"
+# section in cloudflare-worker.js. Free tier: 100k reads/day, 1k writes/day,
+# far more than a personal matchday-logging tool will ever use.
+[[kv_namespaces]]
+binding = "MATCHDAY_SYNC"
+id = "db93d89a7c784ea08ca90585d3706dc3"
