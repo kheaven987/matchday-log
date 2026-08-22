@@ -1914,9 +1914,10 @@
     }
     btn.disabled = true;
     statusEl.style.display = '';
-    let added = 0, skipped = 0, requestsUsed = 0;
+    let added = 0, updated = 0, skipped = 0, requestsUsed = 0;
     const failures = [];
     let clientIdsUpdated = false;
+    let fixturesTouched = false;
     for(let i=0; i<candidates.length; i++){
       const client = candidates[i];
       const existingUpcoming = fixtures.filter(f =>
@@ -1929,30 +1930,49 @@
       try{
         const results = await lookupUpcomingFixtures(client.name, client.venue, client.league, client, needed);
         if(results.some(r => r.teamId)) clientIdsUpdated = true;
-        // Dedupe on home+matchDate only, not opponent name — a club can't play two
-        // different home league fixtures on the same day, and different lookup sources
-        // (API-Sports vs AI web-search) don't always spell the opponent the same way
-        // (e.g. "Coventry" vs "Coventry City"), which used to slip past a name-based key.
-        const existingDates = new Set(existingUpcoming.map(f => f.matchDate));
         let addedForThisClient = 0;
+        let updatedForThisClient = 0;
         let alreadyHadForThisClient = 0;
         results.forEach(result => {
           if(!result.match_date) return;
-          if(existingDates.has(result.match_date)){ alreadyHadForThisClient++; return; }
+          // Same real match if either the opponent matches (catches a reschedule —
+          // date/kickoff changed but it's still the same fixture) or the date matches
+          // exactly (catches an opponent-name spelling mismatch between lookup
+          // sources, e.g. "Coventry" vs "Coventry City"). Either signal is enough —
+          // update the existing fixture in place rather than adding a duplicate.
+          const existingMatch = existingUpcoming.find(f =>
+            (f.away||'').trim().toLowerCase() === (result.opponent||'').trim().toLowerCase() ||
+            f.matchDate === result.match_date
+          );
+          if(existingMatch){
+            let changed = false;
+            if(existingMatch.matchDate !== result.match_date){ existingMatch.matchDate = result.match_date; changed = true; }
+            if(result.opponent && existingMatch.away !== result.opponent){
+              existingMatch.away = result.opponent;
+              existingMatch.label = `${client.name} v ${result.opponent}`;
+              changed = true;
+            }
+            if(result.kickoff_time && existingMatch.kickoff !== result.kickoff_time){ existingMatch.kickoff = result.kickoff_time; changed = true; }
+            if(result.venue && existingMatch.venue !== result.venue){ existingMatch.venue = result.venue; changed = true; }
+            if(changed){ updated++; updatedForThisClient++; fixturesTouched = true; }
+            else { alreadyHadForThisClient++; }
+            return;
+          }
           const label = `${client.name} v ${result.opponent || '?'}`;
-          fixtures.push({
+          const newFx = {
             id: uid(), label, home: client.name, away: result.opponent || '',
             venue: result.venue || client.venue || '', kickoff: result.kickoff_time || '',
             matchDate: result.match_date, closed: false, createdAt: new Date().toISOString()
-          });
-          existingDates.add(result.match_date);
+          };
+          fixtures.push(newFx);
+          existingUpcoming.push(newFx);
           added++;
           addedForThisClient++;
+          fixturesTouched = true;
         });
-        if(addedForThisClient === 0 && alreadyHadForThisClient > 0){
-          skipped++;
-        } else if(addedForThisClient === 0){
-          failures.push(`${client.name}: no confident match found`);
+        if(addedForThisClient === 0 && updatedForThisClient === 0){
+          if(alreadyHadForThisClient > 0) skipped++;
+          else failures.push(`${client.name}: no confident match found`);
         }
       }catch(e){
         failures.push(`${client.name}: ${e.message || 'lookup failed'}`);
@@ -1961,11 +1981,11 @@
     if(clientIdsUpdated){
       await persist(saveClients, 'clients');
     }
-    if(added){
+    if(fixturesTouched){
       if(fixtures.length) selectedFixtureId = selectedFixtureId || fixtures[fixtures.length-1].id;
       await persist(saveFixtures, 'fixtures');
     }
-    let summary = `Added ${added} fixture${added===1?'':'s'} · ${skipped} already up to date · ${failures.length} failed.`;
+    let summary = `Added ${added} fixture${added===1?'':'s'} · ${updated} updated (rescheduled) · ${skipped} already up to date · ${failures.length} failed.`;
     if(noLeague.length){
       summary += ` Skipped (no league set): ${noLeague.map(c=>escapeHtml(c.name)).join(', ')}.`;
     }
