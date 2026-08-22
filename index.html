@@ -442,10 +442,11 @@
 
   <!-- REVIEW TAB -->
   <div id="tab-review">
-    <div style="display:flex; gap:8px; margin-bottom:10px;">
+    <div style="display:flex; gap:8px; margin-bottom:8px;">
       <button class="ghost-btn" id="reviewNewFixtureBtn" style="border-color: var(--brand); color: var(--brand); flex:1;">+ New fixture</button>
       <button class="ghost-btn" id="refreshFixturesBtn" style="border-color: var(--blue); color: var(--blue); flex:1;">↻ Refresh fixtures</button>
     </div>
+    <button class="ghost-btn" id="emailSummaryBtn" style="border-color: var(--signal); color: var(--signal); margin-bottom:10px;">✉️ Email today's summary</button>
     <div id="refreshFixturesStatus" style="display:none; font-size:11.5px; color:var(--muted); margin-bottom:12px;"></div>
     <div id="reviewList"></div>
   </div>
@@ -518,6 +519,18 @@
         <button class="ghost-btn" id="importBtn" style="width:auto; flex:1;">↑ Import data</button>
       </div>
       <input type="file" id="importFile" accept="application/json" style="display:none;" />
+    </div>
+
+    <div class="card">
+      <h2>Report recipient <span id="reportRecipientStatus" style="font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--muted-dim); text-transform:none; letter-spacing:0;"></span></h2>
+      <div style="font-size:12px; color:var(--muted); margin-bottom:10px;">Who "✉️ Email today's summary" (on the Fixtures tab) is addressed to. Opens a draft in your own mail app with the summary pre-filled — this app never sends anything itself.</div>
+      <div class="stack">
+        <input id="reportRecipientInput" type="email" placeholder="name@example.com" autocomplete="off" />
+        <div style="display:flex; gap:8px;">
+          <button class="ghost-btn" id="saveReportRecipientBtn" style="width:auto; flex:1;">Save</button>
+          <button class="ghost-btn" id="clearReportRecipientBtn" style="width:auto; flex:1;">Clear</button>
+        </div>
+      </div>
     </div>
 
     <div class="card">
@@ -774,6 +787,69 @@
       cachedDeletePassword = '';
     }
     return cachedDeletePassword;
+  }
+
+  const REPORT_RECIPIENT_STORAGE_KEY = 'md-report-recipient';
+  let cachedReportRecipient = null;
+
+  async function getReportRecipient(){
+    if(cachedReportRecipient !== null) return cachedReportRecipient;
+    try{
+      const res = await window.storage.get(REPORT_RECIPIENT_STORAGE_KEY, false);
+      cachedReportRecipient = res ? res.value : '';
+    }catch(e){
+      cachedReportRecipient = '';
+    }
+    return cachedReportRecipient;
+  }
+
+  // Builds a plain-text summary of today's fixtures and their logged entries,
+  // for the mailto: link below. Plain text on purpose — mailto: bodies don't
+  // reliably render markdown/HTML, so flags like severity/client-facing/resolved
+  // are bracketed tags instead of bold/strikethrough.
+  function buildTodaysSummaryText(){
+    const todayStr = new Date().toISOString().slice(0,10);
+    const todaysFixtures = fixtures.filter(f => f.matchDate === todayStr);
+    if(!todaysFixtures.length) return null;
+
+    const withEntries = [];
+    const withoutEntries = [];
+    let totalOpen = 0, totalResolved = 0, totalClientFacing = 0;
+
+    todaysFixtures.forEach(fx => {
+      const fxEntries = entries.filter(e => e.fixtureId === fx.id);
+      if(!fxEntries.length){ withoutEntries.push(fx.label); return; }
+      const open = fxEntries.filter(e => !e.resolved).length;
+      const resolved = fxEntries.length - open;
+      totalOpen += open;
+      totalResolved += resolved;
+      const lines = [`${fx.label} — ${open} open, ${resolved} resolved`];
+      fxEntries.forEach(e => {
+        if(e.clientFacing) totalClientFacing++;
+        const flags = [];
+        if(e.severity && e.severity !== 'minor') flags.push(e.severity.toUpperCase());
+        if(e.clientFacing) flags.push('CLIENT FACING');
+        if(e.resolved) flags.push('RESOLVED');
+        const flagStr = flags.length ? ` [${flags.join(', ')}]` : '';
+        lines.push(`  - ${e.category}${e.service ? ' · '+e.service : ''} (${e.team || 'unassigned'}): ${e.note}${flagStr}`);
+      });
+      withEntries.push(lines.join('\n'));
+    });
+
+    const totalEntries = totalOpen + totalResolved;
+    const header = `Summary of issues logged today (${todayStr}) — ${totalEntries} ${totalEntries===1?'entry':'entries'} total, ${totalOpen} open, ${totalResolved} resolved${totalClientFacing ? `, ${totalClientFacing} client facing` : ''}.`;
+
+    const parts = [header, ''];
+    if(withEntries.length){
+      parts.push(withEntries.join('\n\n'));
+    } else {
+      parts.push('No issues logged against any of today\'s fixtures.');
+    }
+    if(withoutEntries.length){
+      parts.push('');
+      parts.push(`No issues logged for: ${withoutEntries.join(', ')}.`);
+    }
+    return parts.join('\n');
   }
 
   async function getApiSportsKey(){
@@ -2098,6 +2174,66 @@
     await refreshDeletePasswordStatus();
   });
 
+  async function refreshReportRecipientStatus(){
+    const el = $('#reportRecipientStatus');
+    if(!el) return;
+    const recipient = await getReportRecipient();
+    el.textContent = recipient ? `(${recipient})` : '(not set)';
+  }
+
+  $('#saveReportRecipientBtn').addEventListener('click', async () => {
+    const input = $('#reportRecipientInput');
+    const val = input.value.trim();
+    if(!val) return;
+    try{
+      await window.storage.set(REPORT_RECIPIENT_STORAGE_KEY, val, false);
+      cachedReportRecipient = val;
+      input.value = '';
+      await refreshReportRecipientStatus();
+    }catch(e){
+      alert('Could not save the report recipient: ' + (e.message || 'unknown error'));
+    }
+  });
+
+  $('#clearReportRecipientBtn').addEventListener('click', async () => {
+    try{
+      await window.storage.delete(REPORT_RECIPIENT_STORAGE_KEY, false);
+    }catch(e){ /* fine if it never existed */ }
+    cachedReportRecipient = '';
+    $('#reportRecipientInput').value = '';
+    await refreshReportRecipientStatus();
+  });
+
+  $('#emailSummaryBtn').addEventListener('click', async () => {
+    const body = buildTodaysSummaryText();
+    if(!body){
+      alert("No fixtures are scheduled for today, so there's nothing to summarise.");
+      return;
+    }
+    let recipient = await getReportRecipient();
+    if(!recipient){
+      recipient = (prompt('Enter the email address to send this summary to (you can save this on the Admin tab so you\'re not asked again):') || '').trim();
+      if(!recipient) return;
+      try{
+        await window.storage.set(REPORT_RECIPIENT_STORAGE_KEY, recipient, false);
+        cachedReportRecipient = recipient;
+        await refreshReportRecipientStatus();
+      }catch(e){ /* non-fatal — still send this once even if saving the recipient fails */ }
+    }
+    const todayStr = new Date().toISOString().slice(0,10);
+    const subject = encodeURIComponent(`Matchday Log Summary — ${todayStr}`);
+    const bodyEncoded = encodeURIComponent(body);
+    if(bodyEncoded.length > 1800){
+      const proceed = confirm("This summary is fairly long and some mail apps (Outlook in particular) can truncate long mailto: links. It'll still open with as much as fits — continue?");
+      if(!proceed) return;
+    }
+    const a = document.createElement('a');
+    a.href = `mailto:${encodeURIComponent(recipient)}?subject=${subject}&body=${bodyEncoded}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  });
+
   // ---------- BACKUP / EXPORT / IMPORT ----------
   $('#exportBtn').addEventListener('click', () => {
     const payload = { fixtures, entries, clients, exportedAt: new Date().toISOString() };
@@ -2263,7 +2399,7 @@
     if(tabName==='log') renderLog();
     if(tabName==='review') renderReview();
     if(tabName==='clients') renderClients();
-    if(tabName==='admin'){ refreshDeletePasswordStatus(); refreshProxyUrlStatus(); refreshSyncStatus(); }
+    if(tabName==='admin'){ refreshDeletePasswordStatus(); refreshProxyUrlStatus(); refreshSyncStatus(); refreshReportRecipientStatus(); }
   }
 
   $$('.tab').forEach(tab => {
@@ -2291,6 +2427,7 @@
     refreshDeletePasswordStatus();
     refreshProxyUrlStatus();
     refreshSyncStatus();
+    refreshReportRecipientStatus();
     initDictation();
   })();
 })();
