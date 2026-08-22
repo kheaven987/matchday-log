@@ -577,7 +577,7 @@
       <h2>API-Sports proxy <span id="proxyUrlStatus" style="font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--muted-dim); text-transform:none; letter-spacing:0;"></span></h2>
       <div style="font-size:12px; color:var(--muted); margin-bottom:10px;">Only needed when running this app outside claude.ai — browsers block direct calls to API-Sports (CORS), so fixture lookups need a small proxy in between. Deploy the included Cloudflare Worker script and paste its URL here.</div>
       <div class="stack">
-        <input id="proxyUrlInput" type="text" placeholder="https://your-worker.workers.dev" autocomplete="off" />
+        <input id="proxyUrlInput" type="text" placeholder="https://your-worker.workers.dev" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
         <div style="display:flex; gap:8px;">
           <button class="ghost-btn" id="saveProxyUrlBtn" style="width:auto; flex:1;">Save</button>
           <button class="ghost-btn" id="clearProxyUrlBtn" style="width:auto; flex:1;">Clear</button>
@@ -588,7 +588,7 @@
       <h2>Sync across devices <span id="syncStatus" style="font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--muted-dim); text-transform:none; letter-spacing:0;"></span></h2>
       <div style="font-size:12px; color:var(--muted); margin-bottom:10px;">Keeps fixtures, log entries, and clients in sync across your own devices, using the same Cloudflare Worker as the API-Sports proxy (a /sync endpoint on it). Built for one person on multiple devices — if two devices save at the same moment, the most recent one wins.</div>
       <div class="stack">
-        <input id="syncUrlInput" type="text" placeholder="https://your-worker.workers.dev" autocomplete="off" />
+        <input id="syncUrlInput" type="text" placeholder="https://your-worker.workers.dev" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
         <input id="syncTokenInput" type="text" placeholder="Sync token" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
         <div style="display:flex; gap:8px;">
           <button class="ghost-btn" id="saveSyncBtn" style="width:auto; flex:1;">Save</button>
@@ -1228,12 +1228,16 @@
       el.textContent = '(not set — this device only)';
       return;
     }
+    // Shows the saved URL so a typo is visible at a glance, instead of having
+    // to blindly re-type it to check — this is what would have caught a
+    // mistyped Worker URL immediately rather than just "sync failed".
+    const url = await getSyncUrl();
     if(!lastSyncAt){
-      el.textContent = '(configured)';
+      el.textContent = `(configured — ${url})`;
       return;
     }
     const when = lastSyncAt.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-    el.textContent = lastSyncOk ? `(synced ${when})` : `(sync failed ${when} — will retry)`;
+    el.textContent = lastSyncOk ? `(synced ${when} — ${url})` : `(sync failed ${when} — will retry — ${url})`;
   }
 
   let lastApiSportsCallAt = 0;
