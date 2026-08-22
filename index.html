@@ -1224,6 +1224,15 @@
     return (exact || list[0]).team.id;
   }
 
+  // Excludes youth/reserve-side opponents (U21, U23, "Reserves", "Development"
+  // squads etc.) from auto-generated fixtures by default — these turn up as
+  // real API-Sports fixtures (pre-season friendlies against an opponent's
+  // development side, for example) but aren't matchday events this app's
+  // coverage is meant to track. Unless a client explicitly needs them, skip.
+  function isYouthOrReserveTeamName(name){
+    return /\bu[1-2][0-9]\b|\breserves?\b|\bdevelopment\b|\bacademy\b|\byouth\b|\bB team\b/i.test(name || '');
+  }
+
   async function apiSportsUpcomingHomeFixtures(clientName, cachedId, maxResults){
     const teamId = await findApiSportsTeamId(clientName, cachedId);
     const todayStr = new Date().toISOString().slice(0,10);
@@ -1235,6 +1244,7 @@
     const list = data.response || [];
     const homeUpcoming = list
       .filter(item => item.teams && item.teams.home && item.teams.home.id === teamId)
+      .filter(item => !isYouthOrReserveTeamName(item.teams.away && item.teams.away.name))
       .sort((a,b) => new Date(a.fixture.date) - new Date(b.fixture.date))
       .slice(0, maxResults);
     if(!homeUpcoming.length) throw new Error('no home fixture found in the next 3 weeks on API-Sports');
@@ -1320,7 +1330,7 @@
     };
     const sourceHint = leagueSourceMap[league] || "the club's own official site or a reliable football fixtures source";
     const todayStr = new Date().toISOString().slice(0,10);
-    const prompt = `Today's date is ${todayStr}. Search the web and find the next scheduled HOME match (all competitions, e.g. league, domestic cup, European competition) for the football club "${clientName}"${league ? `, which plays in the ${league}` : ''}${venueHint ? ` at their home venue ${venueHint}` : ''}, on or after ${todayStr}. Only consider matches where "${clientName}" is the home team — skip any away fixtures even if they come sooner. You must base your answer only on ${sourceHint} — do not use fan sites, aggregators, betting sites, or general news articles, even if they appear in search results. If those official sources don't have a confirmed next home match, say so rather than using another source. Respond with ONLY a single JSON object and NOTHING else — no explanation, no commentary, no markdown fences, before or after it. Output exactly this shape: {"opponent": string, "competition": string, "match_date": "YYYY-MM-DD" or null, "kickoff_time": "HH:MM" or null, "venue": string or null, "confidence": "high"|"medium"|"low", "source": string or null}. If you cannot confidently find a specific next HOME match on or after ${todayStr} from an official source, set match_date to null and confidence to "low".`;
+    const prompt = `Today's date is ${todayStr}. Search the web and find the next scheduled HOME match (all competitions, e.g. league, domestic cup, European competition) for the FIRST TEAM of the football club "${clientName}"${league ? `, which plays in the ${league}` : ''}${venueHint ? ` at their home venue ${venueHint}` : ''}, on or after ${todayStr}. Only consider matches where "${clientName}"'s first team is the home side — skip any away fixtures even if they come sooner, and skip any match involving an U21/U23/reserve/development/academy/youth side, on either team, even if it's the earliest upcoming home fixture at that venue. You must base your answer only on ${sourceHint} — do not use fan sites, aggregators, betting sites, or general news articles, even if they appear in search results. If those official sources don't have a confirmed next home match, say so rather than using another source. Respond with ONLY a single JSON object and NOTHING else — no explanation, no commentary, no markdown fences, before or after it. Output exactly this shape: {"opponent": string, "competition": string, "match_date": "YYYY-MM-DD" or null, "kickoff_time": "HH:MM" or null, "venue": string or null, "confidence": "high"|"medium"|"low", "source": string or null}. If you cannot confidently find a specific next HOME match on or after ${todayStr} from an official source, set match_date to null and confidence to "low".`;
     const text = await callClaudeAPI(prompt, 1000);
     return extractJson(text);
   }
