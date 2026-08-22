@@ -2338,14 +2338,17 @@
     }
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
+    const canShareFiles = typeof navigator.share === 'function' && typeof navigator.canShare === 'function';
+
     backdrop.innerHTML = `
       <div class="modal" style="max-width:680px;">
         <h2>Today's summary</h2>
-        <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">Save this as an image and drop it straight into the body of an email — looks identical everywhere, unlike pasted formatting. "Open in mail app" instead sends a plain-text version to your device's own mail app.</div>
+        <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">${canShareFiles ? '"Share" opens your device\'s share sheet with the image already attached — pick Mail and it drops straight into a new message.' : 'Save this as an image and attach it to an email yourself — looks identical everywhere, unlike pasted formatting.'} "Open in mail app" instead sends a plain-text version.</div>
         <div id="summaryPreviewBox" style="border:1px solid var(--line); border-radius:10px; overflow:auto; max-height:50vh; margin-bottom:14px; -webkit-user-select:text; user-select:text;">${html}</div>
         <div id="summaryCopyStatus" style="display:none; font-size:11.5px; color:var(--muted); margin-bottom:10px;"></div>
         <div class="stack">
-          <button class="submit-btn" id="saveSummaryImageBtn" style="background:var(--signal);">🖼️ Save as image</button>
+          ${canShareFiles ? `<button class="submit-btn" id="shareSummaryImageBtn" style="background:var(--signal);">📤 Share (attach to Mail)</button>` : ''}
+          <button class="${canShareFiles ? 'ghost-btn' : 'submit-btn'}" id="saveSummaryImageBtn" style="${canShareFiles ? 'border-color: var(--signal); color: var(--signal);' : 'background:var(--signal);'}">🖼️ Save as image</button>
           <button class="ghost-btn" id="openSummaryMailtoBtn" style="border-color: var(--blue); color: var(--blue);">✉️ Open in mail app (plain text)</button>
           <button class="ghost-btn" id="closeSummaryModalBtn">Close</button>
         </div>
@@ -2356,32 +2359,20 @@
     $('#closeSummaryModalBtn', backdrop).onclick = () => backdrop.remove();
     $('#openSummaryMailtoBtn', backdrop).onclick = () => openSummaryMailto();
 
-    $('#saveSummaryImageBtn', backdrop).onclick = async () => {
-      const statusEl = $('#summaryCopyStatus', backdrop);
-      const btn = $('#saveSummaryImageBtn', backdrop);
-      const box = $('#summaryPreviewBox', backdrop);
-      statusEl.style.display = '';
-      statusEl.style.color = 'var(--muted)';
-      statusEl.textContent = 'Rendering image…';
-      btn.disabled = true;
-      // Passing height/windowHeight to html2canvas isn't reliable enough on its
-      // own — the box itself still has overflow:auto + max-height, and some
-      // browsers (Safari especially) still clip the capture to the visible
-      // scrolled portion despite the override. More robust: temporarily let the
-      // box expand to its full natural height in the real DOM (no scrolling,
-      // nothing clipped), capture that, then put the original style back.
+    // Passing height/windowHeight to html2canvas isn't reliable enough on its
+    // own — the box itself still has overflow:auto + max-height, and some
+    // browsers (Safari especially) still clip the capture to the visible
+    // scrolled portion despite the override. More robust: temporarily let the
+    // box expand to its full natural height in the real DOM (no scrolling,
+    // nothing clipped), wait for it to actually paint, capture that, then put
+    // the original style back — shared by both Share and Save as image below.
+    async function renderSummaryImageBlob(box){
+      if(typeof html2canvas !== 'function') throw new Error('image renderer failed to load — check your connection and try again');
       const originalBoxStyle = box.getAttribute('style');
       try{
-        if(typeof html2canvas !== 'function') throw new Error('image renderer failed to load — check your connection and try again');
         box.style.maxHeight = 'none';
         box.style.overflow = 'visible';
         box.offsetHeight; // force a layout reflow before measuring/capturing
-        // Wait a couple of frames so the browser has actually painted the
-        // now-fully-expanded box before we measure/capture it — a single
-        // reflow read can still be a hair ahead of final layout on some
-        // browsers, which previously clipped the last bit of content because
-        // we were telling html2canvas an explicit (slightly short) height
-        // instead of letting it measure the real thing.
         await new Promise(requestAnimationFrame);
         await new Promise(requestAnimationFrame);
         const canvas = await html2canvas(box, {
@@ -2390,9 +2381,54 @@
                     // height/width overrides: let html2canvas measure the
                     // box's own fully-expanded, unclipped size directly
         });
-        box.setAttribute('style', originalBoxStyle);
         const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
         if(!blob) throw new Error('could not generate the image');
+        return blob;
+      } finally {
+        box.setAttribute('style', originalBoxStyle);
+      }
+    }
+
+    if(canShareFiles){
+      $('#shareSummaryImageBtn', backdrop).onclick = async () => {
+        const statusEl = $('#summaryCopyStatus', backdrop);
+        const btn = $('#shareSummaryImageBtn', backdrop);
+        const box = $('#summaryPreviewBox', backdrop);
+        statusEl.style.display = '';
+        statusEl.style.color = 'var(--muted)';
+        statusEl.textContent = 'Rendering image…';
+        btn.disabled = true;
+        try{
+          const blob = await renderSummaryImageBlob(box);
+          const todayStr = new Date().toISOString().slice(0,10);
+          const file = new File([blob], `matchday-summary-${todayStr}.png`, { type: 'image/png' });
+          if(!navigator.canShare({ files: [file] })) throw new Error("this browser can't share an image file directly — try Save as image instead");
+          statusEl.textContent = 'Opening share sheet…';
+          await navigator.share({ files: [file], title: `Matchday Log Summary — ${todayStr}` });
+          statusEl.style.color = 'var(--signal)';
+          statusEl.textContent = 'Shared — pick Mail there to attach it to a new message.';
+        }catch(err){
+          if(err && err.name === 'AbortError'){
+            statusEl.style.display = 'none'; // user just closed the share sheet — not an error
+          } else {
+            statusEl.style.color = 'var(--red)';
+            statusEl.textContent = `Couldn't share (${err.message || 'unknown error'}) — try "Save as image" instead.`;
+          }
+        }
+        btn.disabled = false;
+      };
+    }
+
+    $('#saveSummaryImageBtn', backdrop).onclick = async () => {
+      const statusEl = $('#summaryCopyStatus', backdrop);
+      const btn = $('#saveSummaryImageBtn', backdrop);
+      const box = $('#summaryPreviewBox', backdrop);
+      statusEl.style.display = '';
+      statusEl.style.color = 'var(--muted)';
+      statusEl.textContent = 'Rendering image…';
+      btn.disabled = true;
+      try{
+        const blob = await renderSummaryImageBlob(box);
         const todayStr = new Date().toISOString().slice(0,10);
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -2405,7 +2441,6 @@
         statusEl.style.color = 'var(--signal)';
         statusEl.textContent = 'Saved — drag or insert it into your email as an image.';
       }catch(err){
-        box.setAttribute('style', originalBoxStyle);
         statusEl.style.color = 'var(--red)';
         statusEl.textContent = `Couldn't generate the image (${err.message || 'unknown error'}) — try "Open in mail app" instead.`;
       }
