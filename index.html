@@ -2364,8 +2364,18 @@
       statusEl.style.color = 'var(--muted)';
       statusEl.textContent = 'Rendering image…';
       btn.disabled = true;
+      // Passing height/windowHeight to html2canvas isn't reliable enough on its
+      // own — the box itself still has overflow:auto + max-height, and some
+      // browsers (Safari especially) still clip the capture to the visible
+      // scrolled portion despite the override. More robust: temporarily let the
+      // box expand to its full natural height in the real DOM (no scrolling,
+      // nothing clipped), capture that, then put the original style back.
+      const originalBoxStyle = box.getAttribute('style');
       try{
         if(typeof html2canvas !== 'function') throw new Error('image renderer failed to load — check your connection and try again');
+        box.style.maxHeight = 'none';
+        box.style.overflow = 'visible';
+        box.offsetHeight; // force a layout reflow before measuring/capturing
         const canvas = await html2canvas(box, {
           backgroundColor: '#16161a',
           scale: 2, // sharper output for a screen/email image
@@ -2374,6 +2384,7 @@
           width: box.scrollWidth,
           windowWidth: box.scrollWidth
         });
+        box.setAttribute('style', originalBoxStyle);
         const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
         if(!blob) throw new Error('could not generate the image');
         const todayStr = new Date().toISOString().slice(0,10);
@@ -2388,6 +2399,7 @@
         statusEl.style.color = 'var(--signal)';
         statusEl.textContent = 'Saved — drag or insert it into your email as an image.';
       }catch(err){
+        box.setAttribute('style', originalBoxStyle);
         statusEl.style.color = 'var(--red)';
         statusEl.textContent = `Couldn't generate the image (${err.message || 'unknown error'}) — try "Open in mail app" instead.`;
       }
