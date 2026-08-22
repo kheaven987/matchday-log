@@ -2376,13 +2376,19 @@
         box.style.maxHeight = 'none';
         box.style.overflow = 'visible';
         box.offsetHeight; // force a layout reflow before measuring/capturing
+        // Wait a couple of frames so the browser has actually painted the
+        // now-fully-expanded box before we measure/capture it — a single
+        // reflow read can still be a hair ahead of final layout on some
+        // browsers, which previously clipped the last bit of content because
+        // we were telling html2canvas an explicit (slightly short) height
+        // instead of letting it measure the real thing.
+        await new Promise(requestAnimationFrame);
+        await new Promise(requestAnimationFrame);
         const canvas = await html2canvas(box, {
           backgroundColor: '#16161a',
-          scale: 2, // sharper output for a screen/email image
-          height: box.scrollHeight,
-          windowHeight: box.scrollHeight,
-          width: box.scrollWidth,
-          windowWidth: box.scrollWidth
+          scale: 2 // sharper output for a screen/email image — no explicit
+                    // height/width overrides: let html2canvas measure the
+                    // box's own fully-expanded, unclipped size directly
         });
         box.setAttribute('style', originalBoxStyle);
         const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
