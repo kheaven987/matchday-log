@@ -1215,26 +1215,57 @@
     return { clubs, season: String(season) };
   }
 
-  async function findApiSportsTeamId(clientName, cachedId){
-    if(cachedId) return cachedId;
-    const data = await apiSportsFetch(`/teams?search=${encodeURIComponent(clientName)}`);
-    const list = data.response || [];
-    if(!list.length) throw new Error('team not found on API-Sports: ' + clientName);
-    const exact = list.find(item => item.team.name.toLowerCase() === clientName.toLowerCase());
-    return (exact || list[0]).team.id;
-  }
-
   // Excludes youth/reserve-side opponents (U21, U23, "Reserves", "Development"
   // squads etc.) from auto-generated fixtures by default — these turn up as
   // real API-Sports fixtures (pre-season friendlies against an opponent's
   // development side, for example) but aren't matchday events this app's
   // coverage is meant to track. Unless a client explicitly needs them, skip.
   function isYouthOrReserveTeamName(name){
-    return /\bu[1-2][0-9]\b|\breserves?\b|\bdevelopment\b|\bacademy\b|\byouth\b|\bB team\b/i.test(name || '');
+    return /\bu[1-2][0-9]\b|\breserves?\b|\bdevelopment\b|\bacademy\b|\byouth\b|\bB team\b|\bwomen\b|^.*\sW$/i.test(name || '');
   }
 
-  async function apiSportsUpcomingHomeFixtures(clientName, cachedId, maxResults){
-    const teamId = await findApiSportsTeamId(clientName, cachedId);
+  function fuzzyNameMatch(candidateName, clientName){
+    const a = (candidateName || '').trim().toLowerCase();
+    const b = (clientName || '').trim().toLowerCase();
+    return !!a && !!b && (a === b || a.includes(b) || b.includes(a));
+  }
+
+  async function findApiSportsTeamId(clientName, cachedId, league){
+    if(cachedId) return cachedId;
+    // Search within the club's own league roster first — that list can only
+    // contain senior first-team clubs, sidestepping a real API-Sports gap: a
+    // generic name search for e.g. "Newcastle United" returned only their
+    // U21/U23/U18/Women's sides — the senior team is registered there simply
+    // as "Newcastle" — and blindly taking the first search result previously
+    // meant silently caching a youth team's ID against the client.
+    const leagueId = league && APISPORTS_LEAGUE_IDS[league];
+    if(leagueId){
+      try{
+        const season = apiSportsSeasonYear();
+        const leagueData = await apiSportsFetch(`/teams?league=${leagueId}&season=${season}`);
+        const roster = leagueData.response || [];
+        const exact = roster.find(item => item.team.name.trim().toLowerCase() === clientName.trim().toLowerCase());
+        if(exact) return exact.team.id;
+        const fuzzy = roster.find(item => fuzzyNameMatch(item.team.name, clientName));
+        if(fuzzy) return fuzzy.team.id;
+      }catch(e){ /* fall through to the generic search below */ }
+    }
+    const data = await apiSportsFetch(`/teams?search=${encodeURIComponent(clientName)}`);
+    const list = data.response || [];
+    if(!list.length) throw new Error('team not found on API-Sports: ' + clientName);
+    const exact = list.find(item => item.team.name.trim().toLowerCase() === clientName.trim().toLowerCase());
+    if(exact) return exact.team.id;
+    // No exact match — prefer a fuzzy, non-youth/reserve/women's match over
+    // blindly taking the first result, which is how a "Newcastle United"
+    // search previously resolved to "Newcastle United U21".
+    const nonYouth = list.filter(item => !isYouthOrReserveTeamName(item.team.name));
+    const fuzzy = nonYouth.find(item => fuzzyNameMatch(item.team.name, clientName));
+    if(fuzzy) return fuzzy.team.id;
+    return (nonYouth[0] || list[0]).team.id;
+  }
+
+  async function apiSportsUpcomingHomeFixtures(clientName, cachedId, maxResults, league){
+    const teamId = await findApiSportsTeamId(clientName, cachedId, league);
     const todayStr = new Date().toISOString().slice(0,10);
     const rangeEnd = new Date();
     rangeEnd.setDate(rangeEnd.getDate() + 21); // next 3 weeks
@@ -1263,8 +1294,8 @@
     });
   }
 
-  async function lookupFixtureApiSports(clientName, cachedId){
-    const results = await apiSportsUpcomingHomeFixtures(clientName, cachedId, 1);
+  async function lookupFixtureApiSports(clientName, cachedId, league){
+    const results = await apiSportsUpcomingHomeFixtures(clientName, cachedId, 1, league);
     return results[0];
   }
 
@@ -1317,7 +1348,7 @@
     const useApiSports = await apiSportsAvailable();
     if(useApiSports && APISPORTS_LEAGUE_IDS[league]){
       // Same reasoning as lookupLeagueClubs above — no silent fallback.
-      const result = await lookupFixtureApiSports(clientName, client && client.apiSportsTeamId);
+      const result = await lookupFixtureApiSports(clientName, client && client.apiSportsTeamId, league);
       if(client && result.teamId) client.apiSportsTeamId = result.teamId;
       return result;
     }
@@ -1340,7 +1371,7 @@
     if(useApiSports && APISPORTS_LEAGUE_IDS[league]){
       // One API call already returns every fixture in the date range, so asking
       // for up to `maxResults` of them costs nothing extra over asking for one.
-      const results = await apiSportsUpcomingHomeFixtures(clientName, client && client.apiSportsTeamId, maxResults);
+      const results = await apiSportsUpcomingHomeFixtures(clientName, client && client.apiSportsTeamId, maxResults, league);
       if(client && results[0] && results[0].teamId) client.apiSportsTeamId = results[0].teamId;
       return results;
     }
