@@ -1114,7 +1114,8 @@
         const res = await fetch(`${syncUrl}/sync`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', 'x-sync-token': syncToken },
-          body: payload
+          body: payload,
+          cache: 'no-store'
         });
         if(!res.ok) throw new Error(`sync push failed (${res.status})`);
         lastSyncAt = new Date();
@@ -1139,7 +1140,14 @@
     const syncUrl = await getSyncUrl();
     const syncToken = await getSyncToken();
     try{
-      const res = await fetch(`${syncUrl}/sync`, { headers: { 'x-sync-token': syncToken } });
+      // Cache-busting query param — some mobile carriers run transparent
+      // caching proxies that ignore Cache-Control headers on the response and
+      // just key on the exact URL, so a plain GET to the same address can
+      // keep serving a stale response indefinitely. A changing query string
+      // defeats that even when the carrier doesn't respect standard caching
+      // rules. The Worker only checks the path, so this doesn't affect routing.
+      const bust = `_=${Date.now()}`;
+      const res = await fetch(`${syncUrl}/sync?${bust}`, { headers: { 'x-sync-token': syncToken }, cache: 'no-store' });
       if(!res.ok) throw new Error(`sync pull failed (${res.status})`);
       const data = await res.json();
       if(!data || !Array.isArray(data.fixtures) || !Array.isArray(data.entries) || !Array.isArray(data.clients)){
@@ -1191,8 +1199,17 @@
     const syncToken = await getSyncToken();
     let cloudData = null;
     try{
-      const res = await fetch(`${syncUrl}/sync`, { headers: { 'x-sync-token': syncToken } });
-      if(res.ok) cloudData = await res.json();
+      const bust = `_=${Date.now()}`;
+      const res = await fetch(`${syncUrl}/sync?${bust}`, { headers: { 'x-sync-token': syncToken }, cache: 'no-store' });
+      if(res.ok){
+        const parsed = await res.json();
+        // Sanity-check the shape before trusting it — a stale/misbehaving
+        // intermediate cache (some mobile carriers) could still serve back
+        // something that isn't actually our sync data even with a 200 status.
+        if(parsed && Array.isArray(parsed.fixtures) && Array.isArray(parsed.entries) && Array.isArray(parsed.clients)){
+          cloudData = parsed;
+        }
+      }
     }catch(e){ /* unreachable — fall through and treat as "nothing to pull" */ }
 
     const localHasData = fixtures.length > 0 || entries.length > 0 || clients.length > 0;
