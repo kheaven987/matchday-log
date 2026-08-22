@@ -390,7 +390,7 @@
           </div>
         </div>
         <div>
-          <span class="field-label">Responsible team</span>
+          <span class="field-label">Responsible team(s)</span>
           <div class="cat-grid" id="teamGrid">
             <button type="button" class="cat-btn" data-team="Tech Ops">Tech Ops</button>
             <button type="button" class="cat-btn" data-team="Producers">Producers</button>
@@ -586,7 +586,7 @@
   let clients = [];
   let selectedFixtureId = null;
   let selectedCat = null;
-  let selectedTeam = null;
+  let selectedTeams = [];
   let selectedService = null;
   let selectedSev = 'minor';
   let activeFilter = 'all';
@@ -1216,10 +1216,10 @@
 
   function renderCaptureState(){
     $$('#catGrid .cat-btn').forEach(b => b.classList.toggle('selected', b.dataset.cat===selectedCat));
-    $$('#teamGrid .cat-btn').forEach(b => b.classList.toggle('selected', b.dataset.team===selectedTeam));
+    $$('#teamGrid .cat-btn').forEach(b => b.classList.toggle('selected', selectedTeams.includes(b.dataset.team)));
     $$('#sevRow .sev-btn').forEach(b => b.classList.toggle('selected', b.dataset.sev===selectedSev));
     const noteVal = $('#noteInput').value.trim();
-    $('#submitEntry').disabled = !(selectedFixtureId && selectedCat && selectedService && selectedTeam && noteVal.length>0);
+    $('#submitEntry').disabled = !(selectedFixtureId && selectedCat && selectedService && selectedTeams.length && noteVal.length>0);
     $('#captureCard').style.opacity = fixtures.length ? '1' : '0.5';
   }
 
@@ -1232,7 +1232,10 @@
   $('#teamGrid').addEventListener('click', (e) => {
     const btn = e.target.closest('.cat-btn');
     if(!btn) return;
-    selectedTeam = btn.dataset.team;
+    const team = btn.dataset.team;
+    const idx = selectedTeams.indexOf(team);
+    if(idx === -1) selectedTeams.push(team);
+    else selectedTeams.splice(idx, 1);
     renderCaptureState();
   });
   $('#sevRow').addEventListener('click', (e) => {
@@ -1323,13 +1326,13 @@
 
   $('#submitEntry').addEventListener('click', async () => {
     const note = $('#noteInput').value.trim();
-    if(!selectedFixtureId || !selectedCat || !selectedService || !selectedTeam || !note) return;
+    if(!selectedFixtureId || !selectedCat || !selectedService || !selectedTeams.length || !note) return;
     const entry = {
       id: uid(),
       fixtureId: selectedFixtureId,
       category: selectedCat,
       service: selectedService,
-      team: selectedTeam,
+      team: selectedTeams.join(', '),
       severity: selectedSev,
       clientFacing: $('#clientFacingCheck').checked,
       note,
@@ -1343,7 +1346,7 @@
     $('#clientFacingCheck').checked = false;
     selectedCat = null;
     selectedService = null;
-    selectedTeam = null;
+    selectedTeams = [];
     selectedSev = 'minor';
     renderAll();
     $('#submitEntry').textContent = 'Logged ✓';
@@ -1655,7 +1658,7 @@
         selectedFixtureId = card.dataset.fixtureId;
         selectedCat = null;
         selectedService = null;
-        selectedTeam = null;
+        selectedTeams = [];
         $('#clientFacingCheck').checked = false;
         switchTab('capture');
       };
