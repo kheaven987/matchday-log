@@ -581,6 +581,10 @@
   </div>
 </div>
 
+<!-- Rasterizes the summary preview into a downloadable PNG (see "Save as image"
+     on the summary modal). Loaded from a public CDN, no account/build step —
+     same category of external dependency as the Google Fonts import above. -->
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script>
 (function(){
   // If running outside Claude's artifact sandbox, window.storage won't exist.
@@ -2337,11 +2341,11 @@
     backdrop.innerHTML = `
       <div class="modal" style="max-width:680px;">
         <h2>Today's summary</h2>
-        <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">Copy this and paste it into a Gmail or Outlook (web) compose window — the formatting carries over. "Open in mail app" instead sends a plain-text version to your device's own mail app.</div>
+        <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">Save this as an image and drop it straight into the body of an email — looks identical everywhere, unlike pasted formatting. "Open in mail app" instead sends a plain-text version to your device's own mail app.</div>
         <div id="summaryPreviewBox" style="border:1px solid var(--line); border-radius:10px; overflow:auto; max-height:50vh; margin-bottom:14px; -webkit-user-select:text; user-select:text;">${html}</div>
         <div id="summaryCopyStatus" style="display:none; font-size:11.5px; color:var(--muted); margin-bottom:10px;"></div>
         <div class="stack">
-          <button class="submit-btn" id="copySummaryHtmlBtn" style="background:var(--signal);">📋 Copy for email</button>
+          <button class="submit-btn" id="saveSummaryImageBtn" style="background:var(--signal);">🖼️ Save as image</button>
           <button class="ghost-btn" id="openSummaryMailtoBtn" style="border-color: var(--blue); color: var(--blue);">✉️ Open in mail app (plain text)</button>
           <button class="ghost-btn" id="closeSummaryModalBtn">Close</button>
         </div>
@@ -2352,25 +2356,42 @@
     $('#closeSummaryModalBtn', backdrop).onclick = () => backdrop.remove();
     $('#openSummaryMailtoBtn', backdrop).onclick = () => openSummaryMailto();
 
-    $('#copySummaryHtmlBtn', backdrop).onclick = async () => {
+    $('#saveSummaryImageBtn', backdrop).onclick = async () => {
       const statusEl = $('#summaryCopyStatus', backdrop);
-      const plainText = buildTodaysSummaryText() || '';
+      const btn = $('#saveSummaryImageBtn', backdrop);
+      const box = $('#summaryPreviewBox', backdrop);
+      statusEl.style.display = '';
+      statusEl.style.color = 'var(--muted)';
+      statusEl.textContent = 'Rendering image…';
+      btn.disabled = true;
       try{
-        if(!navigator.clipboard || !window.ClipboardItem) throw new Error('Clipboard API not available in this browser');
-        await navigator.clipboard.write([
-          new ClipboardItem({
-            'text/html': new Blob([html], { type: 'text/html' }),
-            'text/plain': new Blob([plainText], { type: 'text/plain' })
-          })
-        ]);
-        statusEl.style.display = '';
+        if(typeof html2canvas !== 'function') throw new Error('image renderer failed to load — check your connection and try again');
+        const canvas = await html2canvas(box, {
+          backgroundColor: '#16161a',
+          scale: 2, // sharper output for a screen/email image
+          height: box.scrollHeight,
+          windowHeight: box.scrollHeight,
+          width: box.scrollWidth,
+          windowWidth: box.scrollWidth
+        });
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        if(!blob) throw new Error('could not generate the image');
+        const todayStr = new Date().toISOString().slice(0,10);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `matchday-summary-${todayStr}.png`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
         statusEl.style.color = 'var(--signal)';
-        statusEl.textContent = 'Copied — paste it into your email compose window.';
+        statusEl.textContent = 'Saved — drag or insert it into your email as an image.';
       }catch(err){
-        statusEl.style.display = '';
         statusEl.style.color = 'var(--red)';
-        statusEl.textContent = `Couldn't copy automatically (${err.message || 'unknown error'}) — try selecting the preview above and copying manually (Ctrl/Cmd+C), or use "Open in mail app" instead.`;
+        statusEl.textContent = `Couldn't generate the image (${err.message || 'unknown error'}) — try "Open in mail app" instead.`;
       }
+      btn.disabled = false;
     };
   }
 
