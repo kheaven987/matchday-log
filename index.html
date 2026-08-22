@@ -1042,7 +1042,11 @@
   let cachedProxyUrl = null;
 
   function normalizeProxyUrl(raw){
-    let val = (raw || '').trim().replace(/\/$/, '');
+    // Strips ALL whitespace, not just leading/trailing — some mobile keyboards'
+    // predictive text inserts spaces at hyphens/dots while typing a URL (seen
+    // firsthand: "matchday- log-apisports-proxy...workers .dev"), and a URL
+    // should never legitimately contain a space anywhere.
+    let val = (raw || '').replace(/\s+/g, '').replace(/\/$/, '');
     if(val && !/^https?:\/\//i.test(val)) val = 'https://' + val;
     return val;
   }
