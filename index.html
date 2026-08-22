@@ -2223,14 +2223,19 @@
     const todayStr = new Date().toISOString().slice(0,10);
     const subject = encodeURIComponent(`Matchday Log Summary — ${todayStr}`);
     const bodyEncoded = encodeURIComponent(body);
-    if(bodyEncoded.length > 1800){
-      const proceed = confirm("This summary is fairly long and some mail apps (Outlook in particular) can truncate long mailto: links. It'll still open with as much as fits — continue?");
-      if(!proceed) return;
-    }
+    // A normal day's worth of entries routinely runs several thousand encoded
+    // characters (measured against real usage), so gating every send behind a
+    // confirm() here would mean seeing this warning on nearly every use — not
+    // just unusually long days. Open the draft first, then just flag it
+    // afterwards if it was long enough that some mail apps (Outlook especially)
+    // might truncate it, rather than blocking the action on that possibility.
     const a = document.createElement('a');
     a.href = `mailto:${encodeURIComponent(recipient)}?subject=${subject}&body=${bodyEncoded}`;
     document.body.appendChild(a);
     a.click();
+    if(bodyEncoded.length > 4000){
+      alert("Heads up: that summary was long enough that some mail apps (Outlook especially) can truncate it — worth a quick check that the full text made it into the draft.");
+    }
     a.remove();
   });
 
